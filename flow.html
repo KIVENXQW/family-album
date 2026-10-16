@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>家中相册 · 流动</title>
+<link rel="stylesheet" href="display.css">
+<script>
+try {
+  var m = /[?&]bg=([0-9a-fA-F]{6})/.exec(location.search);
+  var b = m ? ('#' + m[1].toLowerCase()) : localStorage.getItem('album.bg');
+  if (b) {
+    document.documentElement.style.background = b;
+    var st = document.createElement('style');
+    st.id = 'bgGuard';   /* 给个名字：display.js 换底色时要同步改它，不然这条 !important 会一直压着旧颜色 */
+    st.textContent = 'html,body{background:' + b + ' !important}';
+    document.head.appendChild(st);
+  }
+} catch (e) {}
+</script>
+<style>
+  html,body{margin:0;height:100%;background:#f6f2eb;overflow:hidden}
+  body{font-family:"PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+
+  /* 三条照片带，慢慢往两边走，两端用渐隐收口 */
+  :root{ --tile-h: calc((78vh - 24px) / 3); }
+  .band{
+    position:fixed;left:0;right:0;top:50%;transform:translateY(-50%);
+    display:flex;flex-direction:column;gap:12px;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 5%,#000 95%,transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#000 5%,#000 95%,transparent 100%);
+  }
+  .row{
+    height:var(--tile-h);display:flex;align-items:stretch;gap:12px;width:max-content;
+    will-change:transform;animation-name:slide;animation-timing-function:linear;animation-iteration-count:infinite;
+  }
+  .row[data-dir="-1"]{animation-direction:reverse}
+  body.paused .row{animation-play-state:paused}
+  .row img{
+    position:relative;
+    height:var(--tile-h);width:auto;aspect-ratio:4/3;object-fit:cover;
+    border-radius:2px;background:rgba(120,110,95,.12);filter:saturate(.96);
+    transition:transform .32s cubic-bezier(.22,1,.36,1), box-shadow .32s ease, filter .3s ease;
+  }
+  /* 鼠标放到某一张上，就它自己放大一点，队伍照常往前流 */
+  .row img:hover{
+    transform:scale(1.15);z-index:6;filter:none;
+    box-shadow:0 16px 36px rgba(20,18,16,.3);
+  }
+  @keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  .foot{
+    position:fixed;left:64px;bottom:46px;z-index:5;
+    padding:10px 20px;border-radius:999px;
+    border:1px solid var(--disp-line);background:var(--disp-pill);backdrop-filter:blur(10px);
+    font-size:13px;letter-spacing:.16em;color:var(--disp-label);pointer-events:none;
+  }
+
+  /* 一张都没选的时候 */
+  .empty{
+    position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+    text-align:center;color:var(--disp-label);font-size:14px;letter-spacing:.16em;line-height:2.2;
+  }
+  .empty[hidden]{display:none}
+
+  @media (max-width:900px){
+    :root{ --tile-h: calc((68vh - 16px) / 3); }
+    .band{gap:8px}
+    .row{gap:8px}
+    .foot{left:16px;bottom:16px;padding:8px 16px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .row{animation:none}
+  }
+</style>
+</head>
+<body class="chrome-persist">
+
+<div class="band" id="band">
+  <div class="row" data-dir="1"  data-speed="110" style="animation-delay:-14s"></div>
+  <div class="row" data-dir="-1" data-speed="145" style="animation-delay:-52s"></div>
+  <div class="row" data-dir="1"  data-speed="92"  style="animation-delay:-31s"></div>
+</div>
+
+<div class="foot" id="foot"></div>
+<div class="empty" id="empty" hidden>这张单子上还是空的<br>点右上角「选照片」挑几张</div>
+
+<div class="enter-veil" id="enterVeil"></div>
+<div class="leave-veil" id="leaveVeil"></div>
+
+<div class="chrome">
+  <button class="chrome-btn" id="pickBtn2" type="button" aria-expanded="false" aria-controls="picker">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="7.5" height="6" rx="1.2"/><rect x="13.5" y="4.5" width="7.5" height="6" rx="1.2"/><rect x="3" y="13.5" width="7.5" height="6" rx="1.2"/><rect x="13.5" y="13.5" width="7.5" height="6" rx="1.2"/></svg>
+    选照片
+  </button>
+  <div class="picker" id="picker"></div>
+
+  <button class="chrome-btn" id="pauseBtn" type="button">
+    <svg id="pauseIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12"/><path d="M15 6v12"/></svg>
+    <span id="pauseText">暂停</span>
+  </button>
+
+  <button class="chrome-btn" id="paletteBtn" type="button" aria-expanded="false" aria-controls="palette">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1.2"/><circle cx="15" cy="10" r="1.2"/><circle cx="12" cy="15" r="1.2"/></svg>
+    底色
+  </button>
+  <div class="palette" id="palette"></div>
+
+  <a class="chrome-btn" href="start.html" id="switchLink" aria-label="换一种展示样式" title="换一种展示样式">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13"/><path d="M14 5l3 3-3 3"/><path d="M20 16H7"/><path d="M10 13l-3 3 3 3"/></svg>
+  </a>
+
+  <a class="chrome-btn" href="index.html" id="backLink">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></svg>
+    返回相册
+  </a>
+</div>
+
+<script src="data.js"></script>
+<script src="magnify.js"></script>
+<script src="display.js"></script>
+<script>
+(function(){
+  var A = window.ALBUM;
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.row'));
+  var KEY = 'album.flow';        /* 选了哪几张，记在浏览器里 */
+
+  function fileName(src){ return src.split('/').pop(); }
+
+  /* 可挑的每一张：缩略图当小样，原图当退路 */
+  var items = A.photos.slice().sort(function(a, b){ return a.year - b.year; }).map(function(p){
+    var name = fileName(p.src);
+    return { key: name, src: 'thumbs/' + name, full: p.src };
+  });
+
+  var saved = null;
+  try {
+    var raw = localStorage.getItem(KEY);
+    saved = raw === null ? null : JSON.parse(raw);
+  } catch (e) {}
+  var chosen = Array.isArray(saved) ? saved : null;   /* null = 全部 */
+
+  function saveSel(){
+    try { localStorage.setItem(KEY, JSON.stringify(chosen)); } catch (e) {}
+  }
+  function isOn(key){
+    return chosen === null ? true : chosen.indexOf(key) >= 0;
+  }
+  function picked(){
+    if (chosen === null) return items;
+    var set = {};
+    chosen.forEach(function(k){ set[k] = 1; });
+    return items.filter(function(it){ return set[it.key]; });
+  }
+
+  function order(list, i){
+    var a = list.slice();
+    if (i === 1) a.reverse();
+    if (i === 2 && a.length > 4) a = a.slice(4).concat(a.slice(0, 4));
+    return a;
+  }
+
+  function paint(){
+    var list = picked();
+    document.getElementById('empty').hidden = list.length > 0;
+    rows.forEach(function(row, i){
+      var arr = order(list, i);
+      if (!arr.length) { row.innerHTML = ''; return; }
+      var twice = arr.concat(arr);          /* 两遍首尾相接，位移一半就是无缝循环 */
+      row.innerHTML = twice.map(function(it, k){
+        var lazy = k >= arr.length;         /* 后半段是复制出来的，先别急着解码 */
+        return '<img src="' + it.src + '" alt="" draggable="false" decoding="async"' +
+          (lazy ? ' loading="lazy"' : '') +
+          ' onerror="this.onerror=null;this.src=\'' + it.full + '\'">';
+      }).join('');
+      row.style.animationDuration = (row.dataset.speed || 110) + 's';
+    });
+    var foot = document.getElementById('foot');
+    foot.textContent = chosen === null
+      ? items.length + ' 张照片 · 一直放着'
+      : list.length + ' 张（从 ' + items.length + ' 张里选的）· 一直放着';
+    foot.hidden = list.length === 0;
+    syncPicker();
+  }
+
+  /* ---------- 「选照片」面板 ---------- */
+  function buildPicker(){
+    var host = document.getElementById('picker');
+    var html = '<div class="cap">流动里放哪些</div><div class="grid">';
+    items.forEach(function(it){
+      html += '<button class="p" type="button" data-key="' + it.key + '" aria-pressed="true" aria-label="' + it.key + '">' +
+        '<img src="' + it.src + '" alt="" loading="lazy" decoding="async">' +
+        '<span class="tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></span>' +
+        '</button>';
+    });
+    html += '</div><div class="acts">' +
+      '<button class="mini" id="pickAll" type="button">全选</button>' +
+      '<button class="mini" id="pickNone" type="button">全清</button>' +
+      '<span class="count" id="pickCount"></span></div>';
+    host.innerHTML = html;
+    if (!host.dataset.bound) {
+      host.dataset.bound = '1';
+      host.addEventListener('click', function(e){
+        var b = e.target.closest('.p');
+        if (b) { toggle(b.dataset.key); return; }
+        if (e.target.closest('#pickAll')) { chosen = null; saveSel(); paint(); return; }
+        if (e.target.closest('#pickNone')) { chosen = []; saveSel(); paint(); }
+      });
+      if (window.dockMagnify) window.dockMagnify(host, '.p', { radius: 110, strength: 0.22, lift: 0 });
+    }
+  }
+
+  function toggle(key){
+    var list = chosen === null ? items.map(function(it){ return it.key; }) : chosen.slice();
+    var i = list.indexOf(key);
+    if (i >= 0) list.splice(i, 1); else list.push(key);
+    chosen = (list.length === items.length) ? null : list;
+    saveSel();
+    paint();
+  }
+
+  function syncPicker(){
+    var host = document.getElementById('picker');
+    if (!host) return;
+    host.querySelectorAll('.p').forEach(function(b){
+      b.setAttribute('aria-pressed', isOn(b.dataset.key) ? 'true' : 'false');
+    });
+    var c = host.querySelector('#pickCount');
+    if (c) c.textContent = picked().length + ' / ' + items.length;
+  }
+
+  /* 两个面板互相关掉对方 */
+  function closePalette(){
+    var pal = document.getElementById('palette');
+    var pb = document.getElementById('paletteBtn');
+    if (pal) pal.classList.remove('on');
+    if (pb) pb.setAttribute('aria-expanded', 'false');
+  }
+  function closePicker(){
+    var p = document.getElementById('picker');
+    var b = document.getElementById('pickBtn2');
+    if (p) p.classList.remove('on');
+    if (b) b.setAttribute('aria-expanded', 'false');
+  }
+  document.getElementById('paletteBtn').addEventListener('click', closePicker);
+  document.getElementById('pickBtn2').addEventListener('click', function(e){
+    e.stopPropagation();
+    closePalette();
+    var panel = document.getElementById('picker');
+    var on = panel.classList.toggle('on');
+    this.setAttribute('aria-expanded', on ? 'true' : 'false');
+    document.body.classList.add('chrome-on');   /* 面板开着的时候入口别收 */
+  });
+
+  /* ---------- 暂停 ---------- */
+  var paused = false;
+  var btn = document.getElementById('pauseBtn');
+  var icon = document.getElementById('pauseIcon');
+  var label = document.getElementById('pauseText');
+  function setPaused(on){
+    paused = on;
+    document.body.classList.toggle('paused', on);
+    label.textContent = on ? '继续' : '暂停';
+    icon.innerHTML = on ? '<path d="M8 5l11 7-11 7z"/>' : '<path d="M9 6v12"/><path d="M15 6v12"/>';
+  }
+  btn.addEventListener('click', function(){ setPaused(!paused); });
+  document.addEventListener('visibilitychange', function(){ if (document.hidden) setPaused(true); });
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPaused(true);
+
+  /* ---------- 起步 ---------- */
+  buildPicker();
+  paint();
+
+/* 刚导入的照片也进可挑的名单；相册里被删掉的不再放（跟相册那边读同一份清单） */
+Promise.all([
+  fetch('/api/uploads', { cache: 'no-store' }).then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+  fetch('/api/removed', { cache: 'no-store' }).then(function(r){ return r.json(); }).catch(function(){ return {}; })
+]).then(function(res){
+  var up = ((res[0] || {}).items || []).map(function(u){
+    return { key: u.file, src: 'thumbs/' + u.file, full: 'uploads/' + u.file };
+  });
+  if (up.length) items = up.concat(items);
+  var files = (res[1] || {}).files || [];
+  if (files.length) items = items.filter(function(it){ return files.indexOf(it.key) < 0; });
+  if (up.length || files.length) { buildPicker(); paint(); }
+});
+})();
+</script>
+</body>
+</html>

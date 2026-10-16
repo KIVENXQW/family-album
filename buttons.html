@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>按钮样张</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* 只是样张：把悬停的两个中间状态强制显示出来，方便一眼看清动画 */
+    body { padding: 64px 72px; }
+    h1 { font-family: var(--serif); font-size: 30px; font-weight: 500; letter-spacing: .08em; margin: 0 0 8px; }
+    .sub { color: var(--muted); font-size: 13px; letter-spacing: .1em; margin-bottom: 56px; }
+    .row { display: flex; gap: 72px; align-items: flex-end; margin-bottom: 56px; }
+    .cell { text-align: center; }
+    .tag { font-size: 12px; letter-spacing: .24em; color: var(--muted); margin-top: 26px; }
+    .force-mid .circle { width: 34%; }
+    .force-full .circle { width: 100%; }
+    .force-full .circle .icon.arrow { background: var(--paper); transform: translate(1rem, 0); }
+    .force-full .button-text { color: var(--paper); }
+    .force-mid .circle .icon.arrow { transform: translate(.5rem, 0); }
+    .rule { border-top: 1px solid var(--line); margin: 64px 0 48px; }
+    .note { color: var(--ink2); font-size: 14px; line-height: 1.9; max-width: 62ch; }
+  </style>
+</head>
+<body>
+  <h1>按钮</h1>
+  <div class="sub">结构来自 uiverse.io 的 learn-more · 配色改成相册的墨色 · 鼠标停上去圆会展开、文字变浅</div>
+
+  <div class="row">
+    <div class="cell">
+      <button class="learn-more">
+        <span class="circle" aria-hidden="true"><span class="icon arrow"></span></span>
+        <span class="button-text">展示模式</span>
+      </button>
+      <div class="tag">平常</div>
+    </div>
+    <div class="cell">
+      <button class="learn-more force-mid">
+        <span class="circle" aria-hidden="true"><span class="icon arrow"></span></span>
+        <span class="button-text">展示模式</span>
+      </button>
+      <div class="tag">悬停中</div>
+    </div>
+    <div class="cell">
+      <button class="learn-more force-full">
+        <span class="circle" aria-hidden="true"><span class="icon arrow"></span></span>
+        <span class="button-text">展示模式</span>
+      </button>
+      <div class="tag">悬停完成</div>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <div class="row">
+    <div class="cell">
+      <button class="learn-more">
+        <span class="circle" aria-hidden="true"><span class="icon arrow"></span></span>
+        <span class="button-text">浏览全部</span>
+      </button>
+      <div class="tag">大号 · 页面主按钮</div>
+    </div>
+    <div class="cell">
+      <button class="learn-more learn-more--sm">
+        <span class="circle" aria-hidden="true"><span class="icon arrow"></span></span>
+        <span class="button-text">展示模式</span>
+      </button>
+      <div class="tag">小号 · 顶栏</div>
+    </div>
+    <div class="cell">
+      <button class="learn-more learn-more--sm force-full">
+        <span class="circle" aria-hidden="true"><span class="icon arrow"></span></span>
+        <span class="button-text">这是谁</span>
+      </button>
+      <div class="tag">小号 · 未识别卡片</div>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <p class="note">
+    同一个按钮可以放在任何位置：顶栏用小的，页面主操作用大的。<br>
+    文字长度不同也能用，圆形那一块尺寸固定，右边留白跟着文字走。<br>
+    注意「访客 · 只看」还是淡色小胶囊——它是状态，不是动作，做成按钮会让人以为能点出什么。
+  </p>
+</body>
+</html>

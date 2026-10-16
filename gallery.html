@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>家中相册 · 展示</title>
+<link rel="stylesheet" href="display.css">
+<script>
+try {
+  var m = /[?&]bg=([0-9a-fA-F]{6})/.exec(location.search);
+  var b = m ? ('#' + m[1].toLowerCase()) : localStorage.getItem('album.bg');
+  if (b) {
+    document.documentElement.style.background = b;
+    var st = document.createElement('style');
+    st.id = 'bgGuard';   /* 给个名字：display.js 换底色时要同步改它，不然这条 !important 会一直压着旧颜色 */
+    st.textContent = 'html,body{background:' + b + ' !important}';
+    document.head.appendChild(st);
+  }
+} catch (e) {}
+</script>
+<style>
+  html,body{margin:0;height:100%;background:#f6f2eb;overflow:hidden}
+  body{-webkit-font-smoothing:antialiased}
+  canvas{display:block;width:100vw;height:100vh}
+
+  @media (prefers-reduced-motion: reduce){
+    .enter-veil, .leave-veil{transition-duration:.01ms !important}
+  }
+</style>
+<!--
+  结构与运镜来自 ThreeUI 的 Gallery Heading（threeui.com · MIT License · Meng To / Design+Code）。
+  本文件按家里相册的需要做了改动：中文标题、宋体、自动环绕、可选把照片放进板子里。
+-->
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div class="enter-veil" id="enterVeil"></div>
+<div class="leave-veil" id="leaveVeil"></div>
+
+<div class="chrome">
+  <button class="chrome-btn" id="pickBtn2" type="button" aria-expanded="false" aria-controls="picker">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="7.5" height="6" rx="1.2"/><rect x="13.5" y="4.5" width="7.5" height="6" rx="1.2"/><rect x="3" y="13.5" width="7.5" height="6" rx="1.2"/><rect x="13.5" y="13.5" width="7.5" height="6" rx="1.2"/></svg>
+    选照片
+  </button>
+  <div class="picker" id="picker"></div>
+
+  <button class="chrome-btn" id="paletteBtn" type="button" aria-expanded="false" aria-controls="palette">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1.2"/><circle cx="15" cy="10" r="1.2"/><circle cx="12" cy="15" r="1.2"/></svg>
+    底色
+  </button>
+  <div class="palette" id="palette"></div>
+
+  <a class="chrome-btn" href="start.html" id="switchLink" aria-label="换一种展示样式" title="换一种展示样式">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13"/><path d="M14 5l3 3-3 3"/><path d="M20 16H7"/><path d="M10 13l-3 3 3 3"/></svg>
+  </a>
+
+  <a class="chrome-btn" href="index.html" id="backLink">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></svg>
+    返回相册
+  </a>
+</div>
+
+<script src="data.js"></script>
+<script src="magnify.js"></script>
+<script src="display.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Design frame: 2962 x 2160.  Every length below is in that space.
+ * ------------------------------------------------------------------ */
+var DW = 2962, DH = 2160, DASP = DW / DH;
+
+var RING = {
+  cx: 1484, cy: 1108,   /* projected ring centre                        */
+  /* 原版是 712 / 346；这里整圈放大，比例不变，味道才对 */
+  a: 1000,              /* projected semi-major axis (px)               */
+  ratio: 0.492,         /* semi-minor / semi-major -> plane tilt 60.5deg */
+  axis: 25.5,           /* screen angle of the major axis (deg, y down)  */
+  n: 12,                /* tiles                                         */
+  tile: 490,            /* tile side in ring units (R = a)               */
+  /* 圆角：按屏幕上的像素算。板子投影出来约 180px 宽，0.1 × 180 ≈ 18px，
+     缩放到别的屏幕尺寸时圆角会等比跟着变 */
+  radius: 0.10,         /* corner radius as a fraction of the side       */
+  dist: 13,             /* camera distance in ring radii                 */
+  phase: 93             /* psi of tile 0 at t = 0 (deg)                  */
+};
+
+var DUR = 30;           /* 一圈转完的秒数（原版 15 秒，当相框用放慢一半） */
+
+var SERIF = '"Source Han Serif SC","Noto Serif SC","Songti SC","STSong","SimSun",serif';
+var SANS  = '"PingFang SC","Microsoft YaHei UI","Microsoft YaHei","Helvetica Neue",Arial,system-ui,sans-serif';
+
+/* 底色和文字深浅由 display.js 的调色盘决定 */
+var BG = '#f6f2eb', DARK = false;
+
+/* 标题：上面一行淡、下面一行重。整体比原来收着，不抢照片 */
+var HEAD = [
+  /* 字要够大才压得住场；板子会从字前面扫过（原版就是这样） */
+  { s:'家中相册',     top:906, cap:120, ls:0.12, font:SERIF, weight:'400', halo:38, tone:'dim' },
+  { s:'一家人的照片', top:1064, cap:168, ls:0.05, font:SERIF, weight:'500', halo:30, tone:'strong' }
+];
+
+function tone(t){
+  if (DARK) return t === 'dim' ? '#8d8477' : '#e6e1d8';
+  return t === 'dim' ? '#9c9184' : '#443e36';
+}
+function bgRGBA(a){
+  var h = String(BG).replace('#','');
+  if (h.length !== 6) return 'rgba(246,242,235,' + a + ')';
+  return 'rgba(' + parseInt(h.substr(0,2),16) + ',' + parseInt(h.substr(2,2),16) + ',' + parseInt(h.substr(4,2),16) + ',' + a + ')';
+}
+var SMALL = 22;         /* small-label cap height */
+var USE_PHOTOS = /[?&]photos=1/.test(location.search);
+
+/* ------------------------------------------------------------------ *
+ * Deterministic noise
+ * ------------------------------------------------------------------ */
+function rng(seed){
+  var s = seed >>> 0;
+  return function(){
+    s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0;
+    return s / 4294967296;
+  };
+}
+
+function mkc(w,h){
+  var c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+/* ------------------------------------------------------------------ *
+ * Tile artwork — twelve grainy gradient fields (from the original)
+ * ------------------------------------------------------------------ */
+var TS = 512;                       /* texture resolution */
+var grainTile = (function(){
+  var c = mkc(160,160), x = c.getContext('2d'), d = x.createImageData(160,160), r = rng(0x51F3);
+  for (var i = 0; i < d.data.length; i += 4){
+    var v = 128 + (r() - 0.5) * 116;
+    d.data[i] = d.data[i+1] = d.data[i+2] = v;
+    d.data[i+3] = 255;
+  }
+  x.putImageData(d,0,0);
+  return c;
+})();
+
+function lin(x,x0,y0,x1,y1,stops){
+  var g = x.createLinearGradient(x0*TS,y0*TS,x1*TS,y1*TS);
+  for (var i=0;i<stops.length;i++) g.addColorStop(stops[i][0],stops[i][1]);
+  return g;
+}
+function rad(x,cx,cy,r,stops,r0){
+  var g = x.createRadialGradient(cx*TS,cy*TS,(r0||0)*TS,cx*TS,cy*TS,r*TS);
+  for (var i=0;i<stops.length;i++) g.addColorStop(stops[i][0],stops[i][1]);
+  return g;
+}
+function fill(x,style){ x.fillStyle = style; x.fillRect(0,0,TS,TS); }
+
+function band(x,pts,color,width,blur,passes){
+  x.save();
+  x.translate(-2*TS,0);
+  x.shadowOffsetX = 2*TS; x.shadowBlur = blur*TS; x.shadowColor = color;
+  x.strokeStyle = color; x.lineWidth = width*TS; x.lineCap='round'; x.lineJoin='round';
+  x.beginPath();
+  x.moveTo(pts[0][0]*TS,pts[0][1]*TS);
+  for (var i=1;i<pts.length-1;i+=2){
+    x.quadraticCurveTo(pts[i][0]*TS,pts[i][1]*TS,pts[i+1][0]*TS,pts[i+1][1]*TS);
+  }
+  for (var p=0;p<(passes||1);p++) x.stroke();
+  x.restore();
+}
+function glow(x,cx,cy,r,color,mode){
+  x.save();
+  x.globalCompositeOperation = mode || 'lighter';
+  x.fillStyle = rad(x,cx,cy,r,[[0,color],[1,'rgba(0,0,0,0)']]);
+  x.fillRect(0,0,TS,TS);
+  x.restore();
+}
+function spine(y0,amp,ph,tilt){
+  var p = [], i, u;
+  for (i=0;i<5;i++){ u = -0.12 + i*0.31; p.push([u, y0 + amp*Math.sin(ph + u*4.2) + tilt*u]); }
+  return p;
+}
+function wavy(x,y0,ph,amp,freq,tilt){
+  var i,u,y;
+  x.beginPath();
+  for (i=0;i<=10;i++){
+    u = -0.12 + i*0.124; y = y0 + amp*Math.sin(ph + u*freq) + (tilt||0)*u;
+    if (i===0) x.moveTo(u*TS,y*TS); else x.lineTo(u*TS,y*TS);
+  }
+}
+function wavyStroke(x,y0,ph,amp,freq,tilt,color,w,blur){
+  x.save();
+  x.translate(-2*TS,0);
+  x.shadowOffsetX = 2*TS; x.shadowBlur = blur*TS; x.shadowColor = color;
+  x.strokeStyle = color; x.lineWidth = w*TS; x.lineCap = 'round';
+  wavy(x,y0,ph,amp,freq,tilt); x.stroke(); x.stroke();
+  x.restore();
+}
+function bandPath(x,y0,h,ph,amp,freq,tilt){
+  var i,u;
+  x.beginPath();
+  for (i=0;i<=10;i++){
+    u = -0.12 + i*0.124;
+    x.lineTo(u*TS, (y0 + amp*Math.sin(ph+u*freq) + tilt*u)*TS);
+  }
+  for (i=10;i>=0;i--){
+    u = -0.12 + i*0.124;
+    x.lineTo(u*TS, (y0 + h + amp*0.62*Math.sin(ph+1.9+u*freq*0.86) + tilt*u)*TS);
+  }
+  x.closePath();
+}
+function chrome(x,y0,h,ph,amp,freq,tilt,hot){
+  x.save();
+  x.translate(-2*TS,0);
+  x.shadowOffsetX = 2*TS; x.shadowBlur = 0.06*TS; x.shadowColor = 'rgba(132,12,0,0.9)';
+  x.fillStyle = '#000';
+  bandPath(x,y0-0.018,h+0.036,ph,amp,freq,tilt); x.fill(); x.fill();
+  x.restore();
+
+  x.save();
+  bandPath(x,y0,h,ph,amp,freq,tilt); x.clip();
+  var g = x.createLinearGradient(0,(y0-0.03)*TS,0,(y0+h+0.03)*TS);
+  g.addColorStop(0,   'rgba(8,0,2,1)');
+  g.addColorStop(0.12,'rgba(58,2,6,1)');
+  g.addColorStop(0.3, 'rgba(146,10,8,1)');
+  g.addColorStop(0.43,'rgba(220,42,16,1)');
+  g.addColorStop(0.49, hot || 'rgba(255,206,132,1)');
+  g.addColorStop(0.56,'rgba(206,28,12,1)');
+  g.addColorStop(0.72,'rgba(90,4,6,1)');
+  g.addColorStop(0.88,'rgba(26,0,4,1)');
+  g.addColorStop(1,   'rgba(5,0,2,1)');
+  x.fillStyle = g; x.fillRect(0,0,TS,TS);
+  x.restore();
+
+  wavyStroke(x,y0+0.004,ph,amp,freq,tilt,'rgba(255,238,214,0.55)',0.005,0.004);
+  wavyStroke(x,y0+h-0.006,ph+1.9,amp*0.62,freq*0.86,tilt,'rgba(40,220,200,0.42)',0.008,0.009);
+  wavyStroke(x,y0+h+0.012,ph+1.9,amp*0.62,freq*0.86,tilt,'rgba(170,230,80,0.28)',0.006,0.008);
+}
+function shade(x,x0,x1,strength){
+  x.save();
+  var g = x.createLinearGradient(x0*TS,0,x1*TS,0);
+  g.addColorStop(0,'rgba(0,0,0,0)');
+  g.addColorStop(0.55,'rgba(0,0,0,'+(strength*0.7).toFixed(2)+')');
+  g.addColorStop(1,'rgba(0,0,0,'+strength.toFixed(2)+')');
+  x.fillStyle = g; x.fillRect(0,0,TS,TS);
+  x.restore();
+}
+
+var ART = [
+/* 0 — violet field with a dark torus punched through it */
+function(x){
+  fill(x, rad(x,0.5,0.48,0.82,[
+    [0,'#020105'],[0.3,'#030106'],[0.37,'#1d0a48'],[0.46,'#4f2c94'],
+    [0.54,'#38167e'],[0.66,'#22084e'],[0.86,'#0a0218'],[1,'#04010a']]));
+  glow(x,0.3,0.24,0.4,'rgba(96,66,180,0.4)');
+  glow(x,0.76,0.8,0.3,'rgba(52,18,110,0.35)');
+},
+/* 1 — white silk, magenta + orange flow */
+function(x){
+  fill(x,'#fbf9fb');
+  band(x,spine(0.52,0.09,0.6,-0.18),'rgba(236,44,140,0.92)',0.19,0.055,2);
+  band(x,spine(0.66,0.07,2.2,-0.14),'rgba(255,96,26,0.9)',0.16,0.05,2);
+  band(x,spine(0.4,0.06,3.4,-0.1),'rgba(70,120,255,0.55)',0.09,0.05,1);
+  band(x,spine(0.58,0.08,1.2,-0.16),'rgba(255,255,255,0.9)',0.05,0.03,2);
+  band(x,spine(0.86,0.05,0.2,-0.05),'rgba(150,40,200,0.5)',0.1,0.06,1);
+  glow(x,0.22,0.14,0.46,'rgba(255,255,255,0.85)');
+},
+/* 2 — deep blue, near-black in the far corner */
+function(x){
+  fill(x, lin(x,0.98,0,0.06,1,[
+    [0,'#01020e'],[0.3,'#03082e'],[0.56,'#0820c4'],[0.76,'#1a4dff'],[0.95,'#7ea8ff'],[1,'#b6ccff']]));
+  glow(x,0.2,0.86,0.3,'rgba(176,206,255,0.8)');
+  glow(x,0.06,0.98,0.22,'rgba(226,120,220,0.55)');
+  glow(x,0.92,0.06,0.44,'rgba(0,0,8,0.75)','source-over');
+},
+/* 3 — pale blue horizon crossed by a coral band */
+function(x){
+  fill(x, lin(x,0.08,0,0,1,[
+    [0,'#9dbccd'],[0.14,'#5b87ad'],[0.26,'#245693'],[0.36,'#7793a8'],
+    [0.45,'#e2523a'],[0.52,'#e07a5e'],[0.58,'#82aec8'],[0.68,'#2467a8'],
+    [0.8,'#0e3970'],[0.92,'#081c40'],[1,'#051026']]));
+  band(x,spine(0.42,0.02,1.0,0.03),'rgba(240,140,105,0.45)',0.05,0.03,1);
+  band(x,spine(0.63,0.02,2.4,-0.03),'rgba(150,200,235,0.4)',0.05,0.03,1);
+},
+/* 4 — navy rising into violet-blue */
+function(x){
+  fill(x, lin(x,0.88,0.04,0.14,0.96,[
+    [0,'#010103'],[0.34,'#030316'],[0.58,'#0d066a'],[0.78,'#2a10b8'],[0.93,'#5a38e0'],[1,'#8464f4']]));
+  glow(x,0.14,0.92,0.3,'rgba(110,86,210,0.55)');
+  glow(x,0.9,0.08,0.42,'rgba(0,0,4,0.75)','source-over');
+},
+/* 5 — nearly black, a dim red-brown smear */
+function(x){
+  fill(x,'#020104');
+  band(x,spine(0.46,0.07,1.4,-0.1),'rgba(88,30,18,0.7)',0.24,0.13,2);
+  band(x,spine(0.44,0.07,1.4,-0.1),'rgba(168,64,36,0.45)',0.08,0.07,1);
+  glow(x,0.16,0.2,0.32,'rgba(20,30,64,0.35)');
+  glow(x,0.9,0.88,0.22,'rgba(70,64,110,0.3)');
+},
+/* 6 — pale silk, lavender + amber flow */
+function(x){
+  fill(x,'#e3dcec');
+  band(x,spine(0.42,0.1,2.6,0.16),'rgba(132,58,220,0.9)',0.18,0.055,2);
+  band(x,spine(0.6,0.09,1.1,0.2),'rgba(240,104,20,0.92)',0.16,0.05,2);
+  band(x,spine(0.5,0.09,2.0,0.18),'rgba(245,40,140,0.65)',0.1,0.045,1);
+  band(x,spine(0.55,0.09,1.6,0.18),'rgba(255,255,255,0.8)',0.04,0.03,2);
+  glow(x,0.82,0.94,0.36,'rgba(255,255,255,0.7)');
+  glow(x,0.08,0.08,0.26,'rgba(60,40,110,0.4)','source-over');
+},
+/* 7 — amber corner, red chrome fold with cyan fringe */
+function(x){
+  fill(x,'#12030a');
+  glow(x,0.02,0.04,0.42,'rgba(255,142,36,0.85)');
+  glow(x,0.5,0.5,0.62,'rgba(178,26,14,0.8)');
+  chrome(x,0.18,0.58,1.1,0.07,4.2,-0.1,'rgba(255,216,158,1)');
+  shade(x,0.55,1.2,0.45);
+  glow(x,0.94,0.94,0.3,'rgba(60,14,96,0.45)');
+},
+/* 8 — red chrome, cyan and lime fringes, purple shadow */
+function(x){
+  fill(x,'#040103');
+  glow(x,0.4,0.46,0.5,'rgba(48,14,10,0.8)');
+  chrome(x,0.3,0.44,2.4,0.06,4.8,0.1,'rgba(255,190,110,1)');
+  shade(x,0.3,1.15,0.72);
+  band(x,spine(0.9,0.05,0.4,0.1),'rgba(70,16,110,0.45)',0.12,0.08,1);
+},
+/* 9 — dark navy above, red chrome band below */
+function(x){
+  fill(x, lin(x,0.4,0,0.6,1,[[0,'#03040e'],[0.42,'#060a22'],[0.72,'#070412'],[1,'#030106']]));
+  glow(x,0.28,0.14,0.42,'rgba(18,32,84,0.55)');
+  chrome(x,0.6,0.3,0.9,0.05,3.8,-0.08,'rgba(255,198,120,1)');
+  shade(x,0.3,1.1,0.8);
+},
+/* 10 — chrome fold above, blue-pink streaks over a pale plate */
+function(x){
+  fill(x,'#050208');
+  chrome(x,0.02,0.34,2.0,0.045,4.4,-0.07,'rgba(255,206,132,1)');
+  shade(x,0.45,1.1,0.7);
+  x.save();
+  x.beginPath(); x.moveTo(0,TS*0.72); x.lineTo(TS,TS*0.56); x.lineTo(TS,TS); x.lineTo(0,TS); x.closePath();
+  x.clip();
+  fill(x, lin(x,0,0.5,0.4,1,[[0,'#cfd6dc'],[0.6,'#e8eaee'],[1,'#f4f5f7']]));
+  band(x,spine(0.7,0.03,1.0,-0.1),'rgba(245,44,96,0.8)',0.055,0.03,2);
+  band(x,spine(0.76,0.03,1.6,-0.1),'rgba(30,146,245,0.75)',0.045,0.026,2);
+  band(x,spine(0.82,0.03,2.2,-0.08),'rgba(245,130,54,0.5)',0.035,0.026,1);
+  x.restore();
+},
+/* 11 — pale plate lit by streaks of pink light */
+function(x){
+  fill(x,'#08050a');
+  var i;
+  for (i=0;i<9;i++){
+    var y0 = 0.06 + i*0.045, a = 0.8 - i*0.06;
+    band(x,spine(y0,0.02,0.4+i*0.5,-0.2),
+         'rgba('+(250-i*3)+','+(30+i*15)+','+(80+i*5)+','+a.toFixed(2)+')',0.032,0.018,2);
+  }
+  band(x,spine(0.28,0.02,1.2,-0.18),'rgba(255,120,72,0.55)',0.05,0.035,1);
+  band(x,spine(0.14,0.02,2.4,-0.2),'rgba(120,190,255,0.4)',0.03,0.02,1);
+  x.save();
+  x.beginPath(); x.moveTo(0,TS*0.72); x.lineTo(TS,TS*0.4); x.lineTo(TS,TS); x.lineTo(0,TS); x.closePath();
+  x.clip();
+  fill(x, lin(x,0.1,0.4,0.6,1,[[0,'#c6c7cd'],[0.5,'#e2e2e6'],[1,'#f2f2f4']]));
+  x.restore();
+}
+];
+
+function roundRectPath(x,w,h,r){
+  x.beginPath();
+  x.moveTo(-w/2+r,-h/2);
+  x.lineTo(w/2-r,-h/2); x.quadraticCurveTo(w/2,-h/2,w/2,-h/2+r);
+  x.lineTo(w/2,h/2-r);  x.quadraticCurveTo(w/2,h/2,w/2-r,h/2);
+  x.lineTo(-w/2+r,h/2); x.quadraticCurveTo(-w/2,h/2,-w/2,h/2-r);
+  x.lineTo(-w/2,-h/2+r);x.quadraticCurveTo(-w/2,-h/2,-w/2+r,-h/2);
+  x.closePath();
+}
+
+/* 板子上铺什么：默认是程序生成的渐变；在「选照片」里挑了照片就铺照片。
+   选中的是一组缩略图文件名，空的表示用渐变。 */
+var RING_KEY = 'album.ring';
+function readPick(){
+  try {
+    var v = JSON.parse(localStorage.getItem(RING_KEY) || 'null');
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+}
+var picked = readPick();
+var ringItems = (window.ALBUM ? window.ALBUM.photos.slice().sort(function(a, b){ return a.year - b.year; }) : [])
+  .map(function(p){ var n = p.src.split('/').pop(); return { key: n, src: 'thumbs/' + n, full: p.src }; });
+if (/[?&]photos=1/.test(location.search) && !picked.length) {
+  picked = ringItems.map(function(it){ return it.key; });
+}
+var photoCache = {};
+var loadingN = 0;
+
+function drawPhotoCover(x, img){
+  var s = Math.max(TS/img.width, TS/img.height);
+  var w = img.width*s, h = img.height*s;
+  x.drawImage(img, (TS-w)/2, (TS-h)/2, w, h);
+}
+
+function buildTextures(){
+  var front = [], back = [];
+  for (var i=0;i<ART.length;i++){
+    var c = mkc(TS,TS), x = c.getContext('2d');
+    var name = picked.length ? picked[i % picked.length] : null;
+    var im = name ? photoCache[name] : null;
+    if (im && im.complete && im.naturalWidth) drawPhotoCover(x, im);
+    else ART[i](x);
+    /* film grain */
+    x.save();
+    x.globalCompositeOperation = 'overlay';
+    x.globalAlpha = 0.15;
+    var p = x.createPattern(grainTile,'repeat');
+    x.fillStyle = p; x.fillRect(0,0,TS,TS);
+    x.restore();
+    front.push(c);
+
+    /* reverse side: darker and washed out */
+    var d = mkc(TS,TS), y = d.getContext('2d');
+    y.drawImage(c,0,0);
+    y.globalCompositeOperation = 'saturation';
+    y.fillStyle = 'rgba(128,128,128,0.2)'; y.fillRect(0,0,TS,TS);
+    y.globalCompositeOperation = 'multiply';
+    /* 背面那几块压暗一点做出前后层次；铺照片的时候压得轻一些，别把照片压没了 */
+    y.fillStyle = 'rgba(6,8,18,' + (picked.length ? 0.42 : 0.75) + ')';
+    y.fillRect(0,0,TS,TS);
+    back.push(d);
+  }
+  return { front: front, back: back };
+}
+var TEX = buildTextures();
+
+/* 把选中的照片读进来，读完重画一遍板子 */
+function loadPicked(then){
+  var need = picked.filter(function(n){ return !photoCache[n]; });
+  if (!need.length) { then(); return; }
+  loadingN = need.length;
+  need.forEach(function(n){
+    var im = new Image();
+    im.onload = im.onerror = function(){
+      photoCache[n] = im;
+      if (--loadingN === 0) then();
+    };
+    im.src = 'thumbs/' + n;
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Ring geometry.  u / v span the ring plane; z points at the viewer.
+ * ------------------------------------------------------------------ */
+/* 环面的两个方向向量和它的法线：板子就躺在由它们张成的平面上 */
+var ax = RING.axis * Math.PI/180, cf = RING.ratio, sf = Math.sqrt(1-cf*cf);
+var U = [Math.cos(ax), Math.sin(ax), 0];
+var V = [-Math.sin(ax)*cf, Math.cos(ax)*cf, sf];
+var AXIS = [
+  U[1]*V[2]-U[2]*V[1],
+  U[2]*V[0]-U[0]*V[2],
+  U[0]*V[1]-U[1]*V[0]
+];
+
+/* ------------------------------------------------------------------ *
+ * Canvas + layout
+ * ------------------------------------------------------------------ */
+var cv = document.getElementById('stage'), ctx = cv.getContext('2d');
+var W = 0, H = 0, K = 1, OX = 0, OY = 0, headLayer = null, labelLayer = null;
+
+function d2sx(x){ return OX + x*K; }
+function d2sy(y){ return OY + y*K; }
+
+/* 中文标题按自己字面的高度对齐，不用拉丁字母的大写高度。
+   halo 是「纸色光晕」：标题现在画在板子上面，板子经过时靠这层薄雾保证字始终看得清。 */
+function fitText(x,str,font,weight,cap,cx,capTop,targetW,color,align,ls,halo){
+  var probe = 100;
+  x.font = weight+' '+probe+'px '+font;
+  var pm = x.measureText(str);
+  var capUnit = (pm.actualBoundingBoxAscent || 71) / probe;
+  var size = cap / capUnit;
+  x.font = weight+' '+size+'px '+font;
+  if (x.letterSpacing !== undefined) x.letterSpacing = (size*(ls||0))+'px';
+  var mm = x.measureText(str);
+  var inkW = (mm.actualBoundingBoxRight||mm.width) + (mm.actualBoundingBoxLeft||0);
+  var sx = targetW ? targetW / inkW : 1;
+  x.save();
+  x.textBaseline = 'alphabetic';
+  x.translate(cx, capTop + cap);
+  x.scale(sx,1);
+  x.textAlign = align || 'center';
+  var left = (mm.actualBoundingBoxLeft||0);
+  var fx = align === 'left' ? left : 0;
+  if (halo){
+    x.fillStyle = bgRGBA(0.94);
+    x.shadowColor = bgRGBA(0.94);
+    x.shadowBlur = halo;
+    for (var p = 0; p < 3; p++) x.fillText(str, fx, 0);
+    x.shadowBlur = 0;
+  }
+  x.fillStyle = color;
+  x.fillText(str, fx, 0);
+  x.restore();
+  if (x.letterSpacing !== undefined) x.letterSpacing = '0px';
+  return inkW*sx;
+}
+
+function buildHead(){
+  headLayer = mkc(Math.max(1,W), Math.max(1,H));
+  for (var i=0;i<HEAD.length;i++){
+    var h = HEAD[i];
+    var x = headLayer.getContext('2d');
+    fitText(x, h.s, h.font, h.weight, h.cap*K, d2sx(1481), d2sy(h.top), 0, tone(h.tone), 'center', h.ls, (h.halo||0)*K);
+  }
+}
+
+function buildLabels(){
+  labelLayer = mkc(Math.max(1,W), Math.max(1,H));
+  var x = labelLayer.getContext('2d');
+  var cap = SMALL*K, pad = 88*K;
+  x.save();
+  x.fillStyle = DARK ? '#c9c2b6' : '#6b6259';
+  x.textBaseline = 'alphabetic'; x.textAlign = 'left';
+  x.font = '400 ' + (cap/0.717) + 'px ' + SANS;
+  if (x.letterSpacing !== undefined) x.letterSpacing = (0.03*cap)+'px';
+  /* 只留一行小字，其余注解都去掉了 */
+  x.fillText('12 张照片 · 1980 — 2026', pad, H - pad);
+  x.restore();
+}
+
+function resize(){
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = Math.round(window.innerWidth * dpr);
+  H = Math.round(window.innerHeight * dpr);
+  cv.width = W; cv.height = H;
+  var S = Math.min(W, H*DASP);
+  K = S / DW;
+  OX = (W - DW*K)/2;
+  OY = (H - DH*K)/2;
+  buildHead();
+  buildLabels();
+}
+
+/* ------------------------------------------------------------------ *
+ * Frame
+ * ------------------------------------------------------------------ */
+function project(p){
+  var k = RING.a*K*RING.dist / (RING.dist - p[2]);
+  return [ d2sx(RING.cx) + k*p[0], d2sy(RING.cy) + k*p[1], k ];
+}
+
+/* 一块板子：贴着环面躺着，随角度转过来。照片贴之前先在局部空间转 180°，
+   否则板子的局部 Y 轴朝上，照片会是倒的。 */
+function drawTile(i, psi){
+  var c = Math.cos(psi), s = Math.sin(psi);
+  var C  = [c*U[0]+s*V[0], c*U[1]+s*V[1], c*U[2]+s*V[2]];
+  var T  = [-s*U[0]+c*V[0], -s*U[1]+c*V[1], -s*U[2]+c*V[2]];
+  var h  = RING.tile/(2*RING.a);
+  var p0 = project(C);
+  var pT = project([C[0]+T[0]*h, C[1]+T[1]*h, C[2]+T[2]*h]);
+  var pA = project([C[0]+AXIS[0]*h, C[1]+AXIS[1]*h, C[2]+AXIS[2]*h]);
+  var ex = pT[0]-p0[0], ey = pT[1]-p0[1];
+  var fx = pA[0]-p0[0], fy = pA[1]-p0[1];
+  if (Math.abs(ex*fy - ey*fx) < 0.4) return;      /* 侧过来看不见的那几块就不画了 */
+
+  var facing = C[2] > 0;
+  var img = (facing ? TEX.front : TEX.back)[i % TEX.front.length];
+  var isPhoto = picked.length > 0;              /* 铺照片的时候给板子加相纸白边 */
+  ctx.save();
+  ctx.setTransform(ex*2/TS, ey*2/TS, fx*2/TS, fy*2/TS, p0[0], p0[1]);
+  roundRectPath(ctx, TS, TS, TS*RING.radius);
+  ctx.clip();
+  if (isPhoto) {
+    ctx.fillStyle = '#fffdfa';
+    ctx.fillRect(-TS/2, -TS/2, TS, TS);
+  }
+  /* 板子的局部 Y 轴朝上，照片直接贴会倒过来，所以整块翻过来画；
+     注意要在中心画（之前用 translate+rotate 再画在 0,0，等于又平移了半块板子） */
+  ctx.scale(-1, -1);
+  var a = TS/2 - (isPhoto ? TS*0.075 : 0);      /* 白边的宽度 */
+  ctx.drawImage(img, -a, -a, a*2, a*2);
+  ctx.restore();
+  ctx.setTransform(1,0,0,1,0,0);
+}
+
+function render(t){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle = BG;
+  ctx.fillRect(0,0,W,H);
+  ctx.imageSmoothingQuality = 'high';
+
+  var spin = (t/DUR)*Math.PI*2;
+  var list = [], i;
+  for (i=0;i<RING.n;i++){
+    var psi = RING.phase*Math.PI/180 - i*2*Math.PI/RING.n + spin;
+    var c = Math.cos(psi), s = Math.sin(psi);
+    list.push({ i:i, psi:psi, z: c*U[2] + s*V[2] });
+  }
+  list.sort(function(a,b){ return a.z - b.z; });
+
+  /* 原版的层次：后面的板子先画，中间夹上大字，前面的板子压在字上——
+     板子扫过字的那一下，就是这个设计的味道所在 */
+  var drawnText = false;
+  for (i=0;i<list.length;i++){
+    if (!drawnText && list[i].z > 0){ ctx.drawImage(headLayer,0,0); drawnText = true; }
+    drawTile(list[i].i, list[i].psi);
+  }
+  if (!drawnText) ctx.drawImage(headLayer,0,0);
+  ctx.drawImage(labelLayer,0,0);
+}
+
+/* ------------------------------------------------------------------ *
+ * Clock.  iPad 上没有指针，所以自己慢慢转；有鼠标的机器上，
+ * 指针不进来就停着不动（跟原版描述一致）。
+ * ------------------------------------------------------------------ */
+var t0 = performance.now(), tNow = 0, playing = true;
+var hasFinePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+var pointerIn = false;
+
+if (hasFinePointer){
+  playing = false;
+  window.addEventListener('pointermove', function(){ pointerIn = true; playing = true; });
+  window.addEventListener('pointerleave', function(){ pointerIn = false; });
+  cv.addEventListener('pointerenter', function(){ pointerIn = true; playing = true; });
+}
+
+function frame(now){
+  if (playing && (!hasFinePointer || pointerIn)){
+    tNow = ((now - t0)/1000) % DUR;
+    render(tNow);
+  }
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', function(){ resize(); render(tNow); });
+resize();
+render(0);
+requestAnimationFrame(frame);
+/* 把选中的照片读进来，读完重画一遍板子。必须等画布和图层都建好之后再调 */
+loadPicked(function(){ TEX = buildTextures(); render(tNow); });
+
+window.__DUR = DUR;
+window.__seek = function(t){ tNow = ((t % DUR) + DUR) % DUR; playing = false; render(tNow); };
+window.__play = function(){ t0 = performance.now() - tNow*1000; playing = true; };
+window.__pause = function(){ playing = false; };
+window.__time = function(){ return tNow; };
+
+/* ---------- 「选照片」：挑了照片板子就铺照片，全清就回到渐变 ---------- */
+function savePick(){ try { localStorage.setItem(RING_KEY, JSON.stringify(picked)); } catch (e) {} }
+
+function buildPicker(){
+  var host = document.getElementById('picker');
+  if (!host) return;
+  var html = '<div class="cap">板子上铺哪些 · 不选就是渐变</div><div class="grid">';
+  ringItems.forEach(function(it){
+    html += '<button class="p" type="button" data-key="' + it.key + '" aria-pressed="false" aria-label="' + it.key + '">' +
+      '<img src="' + it.src + '" alt="" loading="lazy" decoding="async">' +
+      '<span class="tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></span>' +
+      '</button>';
+  });
+  html += '</div><div class="acts">' +
+    '<button class="mini" id="pickAll" type="button">全选</button>' +
+    '<button class="mini" id="pickNone" type="button">全清（用渐变）</button>' +
+    '<span class="count" id="pickCount"></span></div>';
+  host.innerHTML = html;
+  /* 只在第一次绑事件：buildPicker 会跑两遍（加载完刚导入的照片再来一次），
+     绑两遍的话点一下等于「加一次又删一次」，看着就像加不上 */
+  if (!host.dataset.bound) {
+    host.dataset.bound = '1';
+    host.addEventListener('click', function(e){
+      var b = e.target.closest('.p');
+      if (b) { togglePick(b.dataset.key); return; }
+      if (e.target.closest('#pickAll')) {
+        picked = ringItems.map(function(it){ return it.key; });
+        savePick(); applyPick(); return;
+      }
+      if (e.target.closest('#pickNone')) { picked = []; savePick(); applyPick(); }
+    });
+    if (window.dockMagnify) window.dockMagnify(host, '.p', { radius: 110, strength: 0.22, lift: 0 });
+  }
+  syncPicker();
+}
+
+function togglePick(key){
+  var i = picked.indexOf(key);
+  if (i >= 0) picked.splice(i, 1); else picked.push(key);
+  savePick(); applyPick();
+}
+
+function syncPicker(){
+  var host = document.getElementById('picker');
+  if (!host) return;
+  host.querySelectorAll('.p').forEach(function(b){
+    b.setAttribute('aria-pressed', picked.indexOf(b.dataset.key) >= 0 ? 'true' : 'false');
+  });
+  var c = host.querySelector('#pickCount');
+  if (c) c.textContent = picked.length ? picked.length + ' / ' + ringItems.length : '用渐变';
+}
+
+function applyPick(){
+  loadPicked(function(){ TEX = buildTextures(); render(tNow); });
+  syncPicker();
+}
+
+function closePalettePanel(){
+  var pal = document.getElementById('palette');
+  var pb = document.getElementById('paletteBtn');
+  if (pal) pal.classList.remove('on');
+  if (pb) pb.setAttribute('aria-expanded', 'false');
+}
+function closePickerPanel(){
+  var p = document.getElementById('picker');
+  var b = document.getElementById('pickBtn2');
+  if (p) p.classList.remove('on');
+  if (b) b.setAttribute('aria-expanded', 'false');
+}
+document.getElementById('paletteBtn').addEventListener('click', closePickerPanel);
+document.getElementById('pickBtn2').addEventListener('click', function(e){
+  e.stopPropagation();
+  closePalettePanel();
+  var panel = document.getElementById('picker');
+  var on = panel.classList.toggle('on');
+  this.setAttribute('aria-expanded', on ? 'true' : 'false');
+  document.body.classList.add('chrome-on');
+});
+
+buildPicker();
+
+/* 刚导入的照片也进可挑的名单 */
+fetch('/api/uploads', { cache: 'no-store' })
+  .then(function(r){ return r.json(); })
+  .then(function(j){
+    var up = (j.items || []).map(function(u){
+      return { key: u.file, src: 'thumbs/' + u.file, full: 'uploads/' + u.file };
+    });
+    if (!up.length) return;
+    ringItems = up.concat(ringItems);
+    buildPicker();
+  })
+  .catch(function(){});
+
+/* 相册里被删掉的照片，展示页也不该再放（跟相册那边读的是同一份清单） */
+fetch('/api/removed', { cache: 'no-store' })
+  .then(function(r){ return r.json(); })
+  .then(function(j){
+    var files = (j && j.files) || [];
+    if (!files.length) return;
+    ringItems = ringItems.filter(function(it){ return files.indexOf(it.key) < 0; });
+    var kept = picked.filter(function(k){ return files.indexOf(k) < 0; });
+    var cut = kept.length !== picked.length;
+    buildPicker();
+    if (cut) { picked = kept; savePick(); applyPick(); }
+  })
+  .catch(function(){});
+
+/* 右上角的入口、调色盘、进出幕布都由 display.js 管，两种展示方式共用 */
+if (window.onDisplayBgChange){
+  window.onDisplayBgChange(function(bgNew, dark){
+    BG = bgNew; DARK = dark;
+    buildHead(); buildLabels(); render(tNow);
+  });
+}
+})();
+</script>
+</body>
+</html>

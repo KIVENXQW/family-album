@@ -1,0 +1,179 @@
+/* 展示页共用的外壳：右上角的返回与调色盘、进出幕布。
+   两种展示方式（环状 / 流动）都引这一份。 */
+
+:root{
+  --disp-bg:#f6f2eb;
+  --disp-ink:#1a1714;
+  --disp-label:#6b6259;
+  --disp-line:rgba(26,23,20,.22);
+  --disp-pill:rgba(255,253,250,.74);
+  --disp-shadow:rgba(20,18,16,.18);
+  --veil:#e9e3d9;
+}
+body.disp-dark{
+  --disp-bg:#2a2724;
+  --disp-ink:#efeee9;
+  --disp-label:#c9c2b6;
+  --disp-line:rgba(239,238,233,.26);
+  --disp-pill:rgba(22,20,18,.6);
+  --disp-shadow:rgba(0,0,0,.5);
+  --veil:#221f1d;
+}
+
+body{background:var(--disp-bg);color:var(--disp-ink)}
+
+/* 右上角那排：点一下或动一下鼠标才出来 */
+.chrome{
+  position:fixed;right:34px;top:26px;z-index:30;
+  display:flex;align-items:center;gap:14px;
+  opacity:0;transform:translateY(-10px);pointer-events:none;
+  transition:opacity .45s ease, transform .45s cubic-bezier(.22,1,.36,1);
+}
+/* 返回单独站到最右边，跟前面几个拉开一点 */
+.chrome #backLink{margin-left:14px}
+body.chrome-on .chrome{opacity:1;transform:none;pointer-events:auto}
+/* 页面声明了 chrome-persist 的话，工具栏就一直开着：
+   「选照片」这种操作不该藏在悬停后面才出现 */
+body.chrome-persist .chrome{opacity:1;transform:none;pointer-events:auto}
+
+.chrome-btn{
+  display:inline-flex;align-items:center;gap:9px;
+  min-height:44px;padding:10px 18px;border-radius:999px;
+  border:1px solid var(--disp-line);color:var(--disp-ink);background:var(--disp-pill);
+  backdrop-filter:blur(10px);
+  font:500 13px/1 "PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.16em;
+  text-decoration:none;cursor:pointer;
+  /* transform 短一点，跟着鼠标放大的时候才跟手 */
+  transition:border-color .3s ease, background .3s ease, transform .18s cubic-bezier(.22,1,.36,1);
+}
+.chrome-btn:hover{border-color:var(--disp-ink);transform:translateY(-1px)}
+.chrome-btn:active{transform:translateY(0) scale(.98)}
+.chrome-btn svg{
+  width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round;
+  transition:transform .35s cubic-bezier(.22,1,.36,1);
+}
+.chrome-btn:focus-visible{outline:2px solid #9a3b2a;outline-offset:3px}
+
+/* 调色盘 */
+.palette{
+  position:absolute;right:0;top:calc(100% + 10px);
+  /* 给个固定宽度：靠 max-content 算的话，某些渲染路径会把它挤成一条 */
+  width:220px;max-width:min(92vw,220px);padding:16px;border-radius:18px;
+  border:1px solid var(--disp-line);background:var(--disp-pill);backdrop-filter:blur(16px);
+  box-shadow:0 22px 60px var(--disp-shadow);
+  transform-origin:top right;
+  opacity:0;transform:translateY(-8px) scale(.98);pointer-events:none;
+  transition:opacity .28s ease, transform .32s cubic-bezier(.22,1,.36,1);
+}
+.palette.on{opacity:1;transform:none;pointer-events:auto}
+.palette .cap{
+  margin:0 0 12px;font:400 11px/1 "PingFang SC","Microsoft YaHei",sans-serif;
+  letter-spacing:.24em;color:var(--disp-label);
+}
+.palette .swrow{display:grid;grid-template-columns:repeat(4,36px);gap:10px}
+.sw{
+  position:relative;display:grid;place-items:center;
+  width:36px;height:36px;padding:0;border-radius:999px;cursor:pointer;
+  border:1px solid var(--disp-line);background:var(--c,#fff);
+  transition:transform .18s cubic-bezier(.22,1,.36,1), box-shadow .2s ease, border-color .2s ease;
+}
+.sw:hover{border-color:var(--disp-ink)}
+.sw:active{transform:scale(.96)}
+/* 选中的那个不能只靠颜色区分：加一圈描边 + 一个勾 */
+.sw[aria-pressed="true"]{border-color:var(--disp-ink);box-shadow:0 0 0 1px var(--disp-ink)}
+.sw svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.4;
+        stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .2s ease}
+.sw[aria-pressed="true"] svg{opacity:1}
+.sw:focus-visible{outline:2px solid #9a3b2a;outline-offset:3px}
+
+/* 注意别叫 .foot：流动页自己的底部胶囊就叫这个名，会串味 */
+.palette .pal-foot{margin-top:14px;padding-top:12px;border-top:1px solid var(--disp-line)}
+.pick{
+  position:relative;display:flex;align-items:center;gap:10px;min-height:36px;cursor:pointer;
+  font:400 12px/1 "PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.1em;color:var(--disp-label);
+  transition:color .2s ease;
+}
+.pick:hover{color:var(--disp-ink)}
+.pick .dot{
+  width:22px;height:22px;border-radius:999px;border:1px solid var(--disp-line);flex:none;
+  background:conic-gradient(#f6f2eb,#f0e6d2,#dfe3da,#dde4ea,#f2e4e2,#e6e2dc,#2a2724,#10161f,#f6f2eb);
+}
+.pick input{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0}
+.pick .now{margin-left:auto;letter-spacing:.06em;font-variant-numeric:tabular-nums;opacity:.8}
+
+/* 流动页的「选照片」面板：一格一张小图，点一下选中/取消 */
+.picker{
+  position:absolute;right:0;top:calc(100% + 10px);
+  width:min(88vw,420px);padding:16px;border-radius:18px;
+  border:1px solid var(--disp-line);background:var(--disp-pill);backdrop-filter:blur(16px);
+  box-shadow:0 22px 60px var(--disp-shadow);
+  transform-origin:top right;
+  opacity:0;transform:translateY(-8px) scale(.98);pointer-events:none;
+  transition:opacity .28s ease, transform .32s cubic-bezier(.22,1,.36,1);
+}
+.picker.on{opacity:1;transform:none;pointer-events:auto}
+.picker .cap{
+  margin:0 0 12px;font:400 11px/1 "PingFang SC","Microsoft YaHei",sans-serif;
+  letter-spacing:.24em;color:var(--disp-label);
+}
+.picker .grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px;
+  max-height:42vh;overflow:auto;padding:2px 2px 2px 0;
+}
+.picker .p{
+  position:relative;aspect-ratio:4/3;padding:0;border-radius:6px;overflow:hidden;cursor:pointer;
+  border:1px solid var(--disp-line);background:rgba(120,110,95,.12);
+  transition:transform .18s cubic-bezier(.22,1,.36,1), border-color .2s ease;
+}
+.picker .p img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .2s ease, filter .2s ease}
+.picker .p:hover{border-color:var(--disp-ink)}
+.picker .p:active{transform:scale(.97)}
+.picker .p:focus-visible{outline:2px solid #9a3b2a;outline-offset:2px}
+.picker .p[aria-pressed="false"] img{opacity:.45;filter:saturate(.5)}
+.picker .p[aria-pressed="false"]::after{
+  content:"";position:absolute;inset:0;background:radial-gradient(60% 60% at 50% 50%, transparent, rgba(0,0,0,.08));
+}
+.picker .p .tick{
+  position:absolute;right:5px;top:5px;width:20px;height:20px;border-radius:999px;
+  display:grid;place-items:center;background:var(--disp-ink);color:var(--disp-bg);
+  opacity:0;transition:opacity .2s ease;
+}
+.picker .p[aria-pressed="true"] .tick{opacity:1}
+.picker .p .tick svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.6;
+                     stroke-linecap:round;stroke-linejoin:round}
+.picker .acts{display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:12px;
+              border-top:1px solid var(--disp-line)}
+.mini{
+  font:500 12px/1 "PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.1em;
+  color:var(--disp-label);background:none;border:1px solid var(--disp-line);border-radius:999px;
+  padding:8px 14px;min-height:34px;cursor:pointer;
+  transition:color .2s ease, border-color .2s ease, transform .18s ease;
+}
+.mini:hover{color:var(--disp-ink);border-color:var(--disp-ink)}
+.mini:active{transform:scale(.97)}
+.mini:focus-visible{outline:2px solid #9a3b2a;outline-offset:2px}
+.picker .count{margin-left:auto;font-size:12px;letter-spacing:.06em;color:var(--disp-label)}
+
+/* 进出的幕布：进出都约 1 秒，跟主界面接起来约 2 秒 */
+.enter-veil{
+  position:fixed;inset:0;z-index:40;background:var(--veil);
+  opacity:1;pointer-events:none;transition:opacity 1s ease;
+}
+.enter-veil.gone{opacity:0}
+.leave-veil{
+  position:fixed;inset:0;z-index:45;background:var(--veil);
+  opacity:0;pointer-events:none;transition:opacity .95s ease;
+}
+.leave-veil.on{opacity:1;pointer-events:auto}
+
+@media (prefers-reduced-motion: reduce){
+  .chrome, .chrome-btn, .chrome-btn svg, .palette, .sw, .enter-veil, .leave-veil{
+    transition-duration:.01ms !important;
+  }
+}
+
+@media (max-width:640px){
+  .chrome{right:16px;top:16px;gap:8px}
+  .chrome-btn{padding:9px 14px;letter-spacing:.1em}
+}

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>家中相册 · 展示</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0d0c0b; overflow: hidden; }
+    body { font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; color: #f2ede6; }
+    .stage { position: fixed; inset: 0; }
+    .ph {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: contain; opacity: 0; transition: opacity 1.8s ease;
+      transform-origin: 50% 50%;
+    }
+    .ph.on { opacity: 1; animation: kb 16s ease-out both; }
+    @keyframes kb { from { transform: scale(1); } to { transform: scale(1.05); } }
+    .vignette {
+      position: fixed; inset: 0; pointer-events: none;
+      background: radial-gradient(120% 100% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%);
+    }
+    .meta { position: fixed; left: 64px; bottom: 56px; max-width: 46ch; text-shadow: 0 2px 24px rgba(0,0,0,.85); }
+    .year { font-family: "Source Han Serif SC", "Noto Serif SC", "Songti SC", "SimSun", serif; font-size: 19px; letter-spacing: .34em; color: #c9a227; }
+    .ev { font-family: "Source Han Serif SC", "Noto Serif SC", "Songti SC", "SimSun", serif; font-size: 46px; letter-spacing: .06em; margin: 8px 0 10px; }
+    .note { font-size: 18px; line-height: 1.8; color: #ded6cc; }
+    .counter { position: fixed; right: 64px; bottom: 62px; font-size: 13px; letter-spacing: .28em; color: #8d857b; }
+    .clock { position: fixed; right: 64px; top: 48px; font-size: 13px; letter-spacing: .3em; color: #6f685f; }
+    .hint { position: fixed; left: 64px; top: 48px; font-size: 12px; letter-spacing: .3em; color: #4f4a44; }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <img class="ph" id="a" alt="">
+    <img class="ph" id="b" alt="">
+  </div>
+  <div class="vignette"></div>
+  <div class="hint">家中相册</div>
+  <div class="clock" id="clock"></div>
+  <div class="meta">
+    <div class="year" id="year"></div>
+    <div class="ev" id="ev"></div>
+    <div class="note" id="note"></div>
+  </div>
+  <div class="counter" id="counter"></div>
+
+  <script src="data.js"></script>
+  <script>
+    (function () {
+      const A = window.ALBUM;
+      const evById = {};
+      A.events.forEach(function (e) { evById[e.id] = e; });
+      const list = A.photos.slice().sort(function (a, b) { return b.year - a.year; });
+      const HOLD = 9000;
+
+      const a = document.getElementById('a');
+      const b = document.getElementById('b');
+      let idx = 0;
+      let front = a;
+      let back = b;
+
+      function paint(p) {
+        const ev = evById[p.event];
+        document.getElementById('year').textContent = p.year;
+        document.getElementById('ev').textContent = ev.title;
+        document.getElementById('note').textContent = ev.place + ' · ' + p.note;
+        document.getElementById('counter').textContent = (idx + 1) + ' / ' + list.length;
+      }
+
+      function show(i) {
+        idx = ((i % list.length) + list.length) % list.length;
+        const p = list[idx];
+        back.src = p.src;
+        back.classList.remove('on');
+        void back.offsetWidth;
+        back.classList.add('on');
+        front.classList.remove('on');
+        const t = front;
+        front = back;
+        back = t;
+        paint(p);
+      }
+
+      function clock() {
+        const d = new Date();
+        document.getElementById('clock').textContent =
+          String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      }
+
+      show(0);
+      clock();
+      setInterval(function () { show(idx + 1); }, HOLD);
+      setInterval(clock, 20000);
+    })();
+  </script>
+</body>
+</html>

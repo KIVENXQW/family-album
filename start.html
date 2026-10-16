@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>家中相册 · 挑一种展示</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--paper)}
+  .wrap{width:min(980px,90vw);padding:6vh 0}
+  h1{font-family:var(--serif);font-size:30px;font-weight:500;letter-spacing:.1em;margin:0 0 8px}
+  .sub{color:var(--muted);font-size:14px;letter-spacing:.08em;margin-bottom:34px}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .card{
+    display:block;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);
+    transition:transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s ease, border-color .3s ease;
+  }
+  .card:hover{transform:translateY(-3px);box-shadow:0 24px 54px rgba(26,23,20,.14);border-color:var(--muted)}
+  .card:active{transform:translateY(0) scale(.995)}
+  .card:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+  /* height:auto 是必须的：style.css 里有一条全局的 img{height:100%}，
+     卡片被 grid 拉伸成定高之后，这条会让图片吃掉整张卡、把下面的文字挤出去，
+     再被 .card 的 overflow:hidden 裁掉——卡片上就只剩图，没有字。 */
+  .card img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:cover;background:#e8e2d8}
+  .card .txt{padding:16px 18px 18px}
+  .card h2{font-family:var(--serif);font-size:20px;font-weight:500;letter-spacing:.08em;margin:0 0 6px}
+  .card p{margin:0;color:var(--ink2);font-size:13px;line-height:1.8}
+  .foot{display:flex;align-items:center;gap:20px;margin-top:28px}
+  .back{display:inline-flex;align-items:center;gap:8px;color:var(--ink2);font-size:14px;letter-spacing:.1em;
+        transition:color .25s ease}
+  .back:hover{color:var(--ink)}
+  .back svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;
+            transition:transform .3s cubic-bezier(.22,1,.36,1)}
+  .back:hover svg{transform:translateX(-3px)}
+  .tip{color:var(--muted);font-size:13px;letter-spacing:.08em}
+  @media (max-width:720px){
+    .cards{grid-template-columns:1fr}
+    h1{font-size:24px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>怎么看这本相册</h1>
+  <div class="sub">选一种。进去之后右上角那个 ⇄ 随时可以换回来。</div>
+
+  <div class="cards">
+    <a class="card" href="gallery.html" data-mode="ring">
+      <img src="preview-ring.png" alt="">
+      <div class="txt">
+        <h2>转圈的</h2>
+        <p>十二块板子围成一圈慢慢转，中间是名字。远看像一件摆件，安静。</p>
+      </div>
+    </a>
+    <a class="card" href="flow.html" data-mode="flow">
+      <img src="preview-flow.png" alt="">
+      <div class="txt">
+        <h2>流动的</h2>
+        <p>照片分三条带子一直往前流，鼠标停在哪张哪张放大。热闹，照片看得多。</p>
+      </div>
+    </a>
+  </div>
+
+  <div class="foot">
+    <a class="back" href="index.html">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></svg>
+      回相册
+    </a>
+    <span class="tip">90 秒没人动的话会自己进上次选的那种</span>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.card').forEach(function (a) {
+  a.addEventListener('click', function () {
+    try { localStorage.setItem('album.mode', a.dataset.mode); } catch (e) {}
+  });
+});
+</script>
+</body>
+</html>

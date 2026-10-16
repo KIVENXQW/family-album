@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>家中相册 · 人物</title>
+<style>
+  /* 排版规格来自用户给的 recreating 说明：单屏 hero、超大滚动名字、奶油白 #efeee9、黑底编辑风。
+     技术栈按草稿现状换成纯 CSS，数值、层级、时间曲线照原样。 */
+  @font-face {
+    font-family: 'Helvetica Neue ME';
+    src: url('https://db.onlinewebfonts.com/c/95cecf452d3208890088a5b4c19c7ecf?family=Helvetica+Neue+ME');
+    font-display: swap;
+  }
+
+  :root{
+    --cream:#efeee9;
+    --panel:#141414;
+    --hn:'Helvetica Neue ME', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --cjk:'Source Han Serif SC','Noto Serif SC','Songti SC','STSong','SimSun', serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#000;color:var(--cream)}
+  body{font-family:var(--hn);-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  img{display:block}
+
+  /* ---------- 第一屏 ---------- */
+  .hero{position:relative;height:100dvh;width:100%;overflow:hidden}
+
+  .bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+      filter:brightness(.34) saturate(.7) blur(3px);transform:scale(1.06)}
+  .bg-veil{position:absolute;inset:0;background:
+      linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.25) 45%, rgba(0,0,0,.7) 100%)}
+
+  .marquee-wrap{position:absolute;left:0;right:0;top:16vh;z-index:10;overflow:hidden}
+  .marquee{display:flex;width:max-content;white-space:nowrap;
+           font-family:var(--cjk);font-weight:500;line-height:1;
+           font-size:16vh;color:var(--cream)}
+  .marquee span{padding-right:6vw}
+
+  .rule{position:absolute;left:1.5rem;right:1.5rem;bottom:5.5rem;z-index:10;
+        height:2px;background:var(--cream);transform-origin:left}
+
+  .header{position:absolute;left:0;right:0;top:0;z-index:30;
+          display:flex;align-items:flex-start;justify-content:space-between;
+          padding:1.5rem}
+  .brand{font-size:1.125rem;letter-spacing:.04em}
+  .cluster{display:none;align-items:flex-start;gap:4rem}
+  .year{font-size:.875rem}
+  .col{display:flex;flex-direction:column;gap:.125rem;font-size:.875rem}
+  .col a{transition:opacity .3s ease}
+  .col a:hover{opacity:.6}
+  .col-title{opacity:.5;letter-spacing:.2em;font-size:.75rem;text-transform:uppercase;margin-bottom:.5rem}
+
+  /* 人像压在滚动大字上：照片居中偏下、四周羽化。
+     真正的抠图要等正式版去背景，这里先用羽化遮罩顶替。 */
+  .front{position:absolute;inset:0;z-index:20;pointer-events:none;
+         display:flex;align-items:flex-end;justify-content:center}
+  .front img{width:auto;height:76vh;max-width:none;object-fit:contain;
+    -webkit-mask-image:radial-gradient(ellipse 72% 62% at 50% 52%, #000 46%, rgba(0,0,0,.7) 68%, rgba(0,0,0,0) 86%);
+    mask-image:radial-gradient(ellipse 72% 62% at 50% 52%, #000 46%, rgba(0,0,0,.7) 68%, rgba(0,0,0,0) 86%);
+    filter:contrast(1.03) saturate(.98) drop-shadow(0 30px 60px rgba(0,0,0,.45))}
+
+  .footer{position:absolute;left:0;right:0;bottom:0;z-index:10;
+          display:flex;align-items:flex-end;justify-content:space-between;
+          padding:1.5rem;padding-bottom:1.25rem;font-size:.75rem;line-height:1.625}
+  .footer .right{text-align:right}
+
+  /* ---------- 汉堡与抽屉 ---------- */
+  .burger{position:absolute;z-index:50;top:1.5rem;right:1.5rem;
+          height:2.5rem;width:2.5rem;background:none;border:0;padding:0;cursor:pointer;
+          display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.25rem}
+  .burger i{display:block;height:2px;width:1.5rem;background:var(--cream);
+            transition:transform .5s cubic-bezier(.76,0,.24,1), opacity .3s ease}
+  .burger.open i:nth-child(1){transform:translateY(6px) rotate(45deg)}
+  .burger.open i:nth-child(2){opacity:0}
+  .burger.open i:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+
+  .backdrop{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.4);
+            backdrop-filter:blur(6px);opacity:0;pointer-events:none;transition:opacity .5s ease}
+  .backdrop.open{opacity:1;pointer-events:auto}
+
+  .drawer{position:fixed;top:0;right:0;z-index:40;height:100%;width:80%;max-width:24rem;
+          background:var(--panel);padding:2.5rem 2rem;transform:translateX(100%);
+          transition:transform .6s cubic-bezier(.76,0,.24,1);overflow-y:auto}
+  .drawer.open{transform:translateX(0)}
+  .drawer .col-title{opacity:0;transform:translateY(1rem);transition:all .5s ease}
+  .drawer.open .col-title{opacity:.5;transform:none}
+  .drawer .big{display:flex;flex-direction:column;gap:.75rem;margin:0 0 3rem}
+  .drawer .big a{font-family:var(--cjk);font-size:2.25rem;letter-spacing:.06em;
+                 opacity:0;transform:translateY(1.5rem);transition:all .6s cubic-bezier(.22,1,.36,1)}
+  .drawer.open .big a{opacity:1;transform:none}
+  .drawer .small{display:flex;flex-wrap:wrap;gap:1rem;font-size:.875rem}
+  .drawer .small a{opacity:0;transform:translateY(1rem);transition:all .5s ease}
+  .drawer.open .small a{opacity:1;transform:none}
+
+  /* ---------- 入场动画 ---------- */
+  @keyframes fade-in{from{opacity:0}to{opacity:1}}
+  @keyframes rise-in{from{opacity:0;transform:translateY(4vh) scale(1.03)}to{opacity:1;transform:none}}
+  @keyframes fade-up{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
+  @keyframes line{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  @keyframes march{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  .anim-fade-in{animation:fade-in 1.2s ease-out both}
+  .anim-rise-in{animation:rise-in 1.4s cubic-bezier(.22,1,.36,1) both;animation-delay:.3s}
+  .anim-fade-up{animation:fade-up .9s cubic-bezier(.22,1,.36,1) both}
+  .anim-line{animation:line 1.1s cubic-bezier(.76,0,.24,1) both;animation-delay:1.2s}
+  .marquee{animation:march 30s linear infinite}
+
+  @media (prefers-reduced-motion: reduce){
+    .anim-fade-in,.anim-rise-in,.anim-fade-up,.anim-line,.marquee{
+      animation-duration:.01ms !important;animation-delay:0ms !important;animation-iteration-count:1 !important}
+  }
+
+  /* ---------- 下方：这个人的照片 ---------- */
+  .stream{background:#0b0a09;padding:5.5rem 1.5rem 6rem}
+  .stream-inner{max-width:1180px;margin:0 auto}
+  .stream-head{display:flex;align-items:baseline;justify-content:space-between;
+               border-bottom:1px solid rgba(239,238,233,.22);padding-bottom:1rem;margin-bottom:3rem}
+  .stream-head h2{font-family:var(--cjk);font-weight:500;font-size:1.5rem;letter-spacing:.14em;margin:0}
+  .stream-head .k{font-size:.75rem;letter-spacing:.28em;opacity:.72;text-transform:uppercase}
+  .yr{margin-bottom:3.5rem}
+  .yr-label{font-family:var(--cjk);font-size:1.75rem;letter-spacing:.12em;opacity:.7;margin-bottom:1.25rem}
+  .yr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.5rem}
+  /* 照片格子换成真按钮：能键盘聚焦、能长按，看着还是照片 */
+  .card{position:relative;display:block;width:100%;padding:0;border:0;background:none;
+        text-align:left;font:inherit;color:inherit;cursor:zoom-in;
+        -webkit-touch-callout:none;user-select:none}
+  .card:focus-visible{outline:2px solid var(--cream);outline-offset:4px}
+  .card .go{
+    position:absolute;right:14px;top:14px;width:36px;height:36px;border-radius:999px;
+    display:flex;align-items:center;justify-content:center;background:rgba(13,12,11,.62);
+    backdrop-filter:blur(6px);opacity:0;transform:translateY(-6px);
+    transition:opacity .3s ease,transform .35s cubic-bezier(.22,1,.36,1);
+  }
+  .card:hover .go{opacity:1;transform:none}
+  .card .go svg{width:16px;height:16px;fill:none;stroke:#efeee9;stroke-width:1.6;
+                stroke-linecap:round;stroke-linejoin:round;transition:transform .3s ease}
+  .card:hover .go svg{transform:translateX(1px)}
+  .card img{width:100%;aspect-ratio:4/3;object-fit:cover;filter:brightness(.92) saturate(.95);
+            transition:filter .6s ease, transform .8s ease}
+  .card:hover img{filter:none;transform:scale(1.01)}
+  .card .cap{margin-top:.75rem;font-size:.8125rem;line-height:1.7;opacity:.75}
+  /* ---------- 看大图、右键菜单、删除确认（跟相册那边同一套用法，这里配深色） ---------- */
+  .pv-lb{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;
+         background:rgba(8,8,7,.94);opacity:0;transition:opacity .3s ease}
+  .pv-lb[data-open="1"]{display:flex;opacity:1}
+  .pv-lb img{max-width:92vw;max-height:84vh;object-fit:contain}
+  .pv-cap{position:absolute;left:0;right:0;bottom:1.5rem;text-align:center;padding:0 4rem;
+          font-size:.8125rem;letter-spacing:.06em;opacity:.8}
+  .pv-btnx{position:absolute;width:46px;height:46px;border-radius:999px;border:0;cursor:pointer;
+           background:rgba(30,28,26,.72);color:var(--cream);display:flex;align-items:center;
+           justify-content:center;transition:background .25s ease,transform .25s ease}
+  .pv-btnx:hover{background:rgba(30,28,26,.95);transform:scale(1.06)}
+  .pv-btnx:focus-visible{outline:2px solid var(--cream);outline-offset:3px}
+  .pv-btnx svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;
+               stroke-linecap:round;stroke-linejoin:round}
+  .pv-x{right:1.5rem;top:1.5rem}
+  .pv-prev{left:1.25rem;top:50%;margin-top:-23px}
+  .pv-next{right:1.25rem;top:50%;margin-top:-23px}
+
+  .pv-menu{position:fixed;z-index:90;display:none;min-width:150px;padding:.5rem;border-radius:8px;
+           background:rgba(20,19,18,.97);border:1px solid rgba(239,238,233,.18);
+           box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .pv-menu.on{display:block}
+  .pv-menu button{display:block;width:100%;text-align:left;padding:.55rem .8rem;border:0;
+                  border-radius:5px;background:none;color:var(--cream);font-size:.875rem;
+                  font-family:var(--hn);cursor:pointer}
+  .pv-menu button:hover{background:rgba(239,238,233,.1)}
+  .pv-menu button.danger{color:#e0836f}
+
+  .pv-modal{position:fixed;inset:0;z-index:95;display:none;align-items:center;justify-content:center}
+  .pv-modal[data-open="1"]{display:flex}
+  .pv-veil{position:absolute;inset:0;background:rgba(8,8,7,.72)}
+  .pv-panel{position:relative;width:min(420px,90vw);padding:1.75rem;border-radius:10px;
+            background:var(--panel);border:1px solid rgba(239,238,233,.16);color:var(--cream)}
+  .pv-panel h2{font-family:var(--cjk);font-weight:500;font-size:1.25rem;letter-spacing:.08em;margin:0 0 .6rem}
+  .pv-panel p{margin:0;font-size:.875rem;line-height:1.8;opacity:.78}
+  .pv-actions{display:flex;gap:.75rem;margin-top:1.5rem;justify-content:flex-end}
+  .pv-actions button{min-height:40px;padding:.5rem 1.25rem;border-radius:999px;cursor:pointer;
+                     font-size:.875rem;font-family:var(--hn);color:var(--cream);
+                     border:1px solid rgba(239,238,233,.25);background:none;
+                     transition:background .25s ease,border-color .25s ease}
+  .pv-actions button:hover{background:rgba(239,238,233,.1)}
+  .pv-actions button.danger{background:#9a3b2a;border-color:#9a3b2a;color:#fff}
+  .pv-actions button.danger:hover{background:#a8432f}
+
+  @media (min-width:640px){
+    .marquee-wrap{top:14vh}
+    .marquee{font-size:26vh}
+    .front img{height:82vh}
+    .rule{left:2.5rem;right:2.5rem;bottom:7rem}
+    .header{padding:2rem 2.5rem}
+    .cluster{display:flex}
+    .footer{padding:2rem 2.5rem}
+    .footer{font-size:.875rem}
+    .burger{display:none}
+    .drawer,.backdrop{display:none}
+    .stream{padding:7rem 2.5rem 8rem}
+  }
+</style>
+<style>
+  /* static build: no server here, so hide the delete entry point */
+  #pvMenu button[data-act="delete"] { display: none !important; }
+</style></head>
+<body>
+
+<section class="hero">
+  <img class="bg anim-fade-in" id="bg" alt="">
+  <div class="bg-veil"></div>
+
+  <div class="marquee-wrap anim-fade-up" style="animation-delay:500ms">
+    <div class="marquee" id="marquee"></div>
+  </div>
+
+  <div class="rule anim-line"></div>
+
+  <header class="header">
+    <a class="brand anim-fade-up" style="animation-delay:800ms" href="index.html">家中相册</a>
+    <div class="cluster">
+      <div class="year anim-fade-up" id="yearSlot" style="animation-delay:900ms"></div>
+      <nav class="col anim-fade-up" style="animation-delay:1000ms" id="colPerson">
+        <div class="col-title">这个人</div>
+      </nav>
+      <nav class="col anim-fade-up" style="animation-delay:1150ms" id="colAlbum">
+        <div class="col-title">相册</div>
+      </nav>
+    </div>
+  </header>
+
+  <div class="front anim-rise-in">
+    <img id="front" alt="Portrait">
+  </div>
+
+  <footer class="footer">
+    <div class="anim-fade-up" style="animation-delay:1400ms" id="footLeft"></div>
+    <div class="right anim-fade-up" style="animation-delay:1550ms" id="footRight"></div>
+  </footer>
+
+  <button class="burger anim-fade-up" id="burger" style="animation-delay:900ms" aria-label="菜单">
+    <i></i><i></i><i></i>
+  </button>
+</section>
+
+<div class="backdrop" id="backdrop"></div>
+<aside class="drawer" id="drawer">
+  <div class="col-title" style="transition-delay:.25s">这个人</div>
+  <div class="big" id="drawerPerson"></div>
+  <div class="col-title" style="transition-delay:.5s">相册</div>
+  <div class="small" id="drawerAlbum"></div>
+</aside>
+
+<section class="stream" id="photos">
+  <div class="stream-inner">
+    <div class="stream-head">
+      <h2 id="streamTitle">照片</h2>
+      <div class="k" id="streamCount"></div>
+    </div>
+    <div id="streamBody"></div>
+  </div>
+</section>
+
+<!-- 看大图 / 右键菜单 / 删除确认 -->
+<div class="pv-lb" id="pvLb" role="dialog" aria-modal="true" aria-label="看照片">
+  <button class="pv-btnx pv-x" type="button" id="pvClose" aria-label="关闭">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+  </button>
+  <button class="pv-btnx pv-prev" type="button" id="pvPrev" aria-label="上一张">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+  </button>
+  <button class="pv-btnx pv-next" type="button" id="pvNext" aria-label="下一张">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+  </button>
+  <img id="pvImg" alt="">
+  <div class="pv-cap" id="pvCap"></div>
+</div>
+
+<div class="pv-menu" id="pvMenu" role="menu" aria-label="照片操作">
+  <button type="button" role="menuitem" data-act="open">打开看</button>
+  <button type="button" role="menuitem" class="danger" data-act="delete">删掉</button>
+</div>
+
+<div class="pv-modal" id="pvDel" role="dialog" aria-modal="true" aria-labelledby="pvDelTitle">
+  <div class="pv-veil" data-close></div>
+  <div class="pv-panel">
+    <h2 id="pvDelTitle">删掉这张照片？</h2>
+    <p id="pvDelDesc"></p>
+    <div class="pv-actions">
+      <button type="button" data-close>取消</button>
+      <button type="button" class="danger" id="pvDelOk">删掉</button>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function(){
+  var A = window.ALBUM;
+  var id = new URLSearchParams(location.search).get('id') || 'nainai';
+  var person = A.people.filter(function(p){ return p.id === id; })[0] || A.people[0];
+  var ph = {};
+  A.photos.forEach(function(p){ ph[p.id] = p; });
+
+  /* 相册里被删掉的照片（文件名清单，服务端记在 photos-removed.json 里）。
+     读回来之前先按「一张没删」画，读完再画一遍。 */
+  var removed = [];
+  var family = false;
+  try { family = sessionStorage.getItem('album.family') === '1'; } catch (e) {}
+  if (/[?&]fam=1/.test(location.search)) family = true;
+
+  function baseName(src){ return String(src || '').split('/').pop(); }
+  function isGone(p){ return removed.indexOf(baseName(p.src)) >= 0; }
+
+  var mine = A.photos.filter(function(p){ return p.people.indexOf(person.id) >= 0; });
+  var list = [], years = [], span = '';
+  function computeList(){
+    list = mine.filter(function(p){ return !isGone(p); })
+               .sort(function(a,b){ return a.year - b.year; });
+    years = list.map(function(p){ return p.year; });
+    span = years.length ? (Math.min.apply(null,years) + ' — ' + Math.max.apply(null,years)) : '';
+  }
+  computeList();
+
+  document.title = person.name + ' — 家中相册';
+
+  /* 名字与年份：原版是「名字 — 名字」，这里换成「名字 — 出生年」 */
+  var birth = (person.years || '').split('—')[0].trim();
+  var unit = person.name + '\u00a0—\u00a0' + (birth || span) + '\u00a0';
+  var half = '';
+  for (var k = 0; k < 3; k++) half += '<span>' + unit + '</span>';
+  document.getElementById('marquee').innerHTML = half + half;
+
+  /* 背景用这个人最早的一张（压暗做底），前面压的是现在这张脸。
+     头像那张要是被删了，就退而用他剩下的第一张。 */
+  function facePhoto(){
+    var p = ph[person.portrait];
+    if (p && !isGone(p)) return p;
+    return list[0] || null;
+  }
+  function paintPhotos(){
+    var face = facePhoto();
+    var bgPhoto = list[0] || face;
+    if (bgPhoto) document.getElementById('bg').src = bgPhoto.src;
+    if (face) document.getElementById('front').src = face.src;
+  }
+
+  document.getElementById('yearSlot').textContent = person.years || span;
+
+  var personLinks = [
+    ['全部照片', '#photos'],
+    ['人物列表', 'index.html#/people']
+  ];
+  var albumLinks = [
+    ['时间', 'index.html'],
+    ['未识别', 'index.html#/unknown']
+  ];
+  function fill(node, arr){
+    arr.forEach(function(it){
+      var a = document.createElement('a');
+      a.textContent = it[0]; a.href = it[1];
+      node.appendChild(a);
+    });
+  }
+  fill(document.getElementById('colPerson'), personLinks);
+  fill(document.getElementById('colAlbum'), albumLinks);
+  fill(document.getElementById('drawerPerson'), personLinks);
+  fill(document.getElementById('drawerAlbum'), albumLinks);
+
+  function paintFoot(){
+    var tail;
+    if (years.length > 1) tail = '照片跨 ' + Math.min.apply(null,years) + ' 到 ' + Math.max.apply(null,years) + ' 年';
+    else if (years.length === 1) tail = '只有 ' + years[0] + ' 年一年';
+    else tail = '他的照片都删掉了';
+    document.getElementById('footLeft').innerHTML =
+      (birth ? birth + ' 年生' : '') + '<br>' + tail + '<br>' + '一共 ' + list.length + ' 张照片';
+    document.getElementById('footRight').innerHTML =
+      '家里的相册<br>' + person.name;
+  }
+
+  /* 照片按年份分组，一整段拼好再插进去（新的在前面） */
+  function paintStream(){
+    document.getElementById('streamTitle').textContent = person.name + '的照片';
+    document.getElementById('streamCount').textContent =
+      list.length + ' 张' + (span ? ' · ' + span : '');
+    var body = document.getElementById('streamBody');
+    if (!list.length){
+      body.innerHTML = '<p style="opacity:.7">这个人的照片都被删掉了。</p>';
+      return;
+    }
+    var order = [], groups = {};
+    list.slice().reverse().forEach(function(p){
+      if (!groups[p.year]){ groups[p.year] = []; order.push(p.year); }
+      groups[p.year].push(p);
+    });
+    body.innerHTML = order.map(function(y){
+      return '<section class="yr"><div class="yr-label">' + y + '</div><div class="yr-grid">' +
+        groups[y].map(function(p){
+          return '<button class="card" type="button" data-file="' + baseName(p.src) + '" ' +
+            'aria-label="打开看这张照片">' +
+            '<img loading="lazy" decoding="async" src="' + p.src + '" alt="">' +
+            '<span class="go" aria-hidden="true"><svg viewBox="0 0 24 24">' +
+            '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>' +
+            '<div class="cap">' + p.note + '</div></button>';
+        }).join('') +
+      '</div></section>';
+    }).join('');
+  }
+
+  function paintAll(){
+    computeList();
+    paintPhotos();
+    paintFoot();
+    paintStream();
+  }
+  paintAll();
+
+  // ---------- 看大图 / 右键菜单 / 删掉 ----------
+  var lb = document.getElementById('pvLb');
+  var pvList = [], pvIndex = 0;
+  function openViewer(file){
+    pvList = list.slice().reverse();      /* 跟上面那段一样：新的在前 */
+    if (!pvList.length) return;
+    pvIndex = Math.max(0, pvList.findIndex(function(p){ return baseName(p.src) === file; }));
+    paintViewer();
+    lb.dataset.open = '1';
+    document.body.style.overflow = 'hidden';
+  }
+  function paintViewer(){
+    var p = pvList[pvIndex];
+    if (!p) return;
+    document.getElementById('pvImg').src = (p.full || p.src);
+    document.getElementById('pvCap').textContent =
+      p.year + ' 年 · ' + p.note + ' · 第 ' + (pvIndex + 1) + ' / ' + pvList.length + ' 张';
+  }
+  function closeViewer(){
+    delete lb.dataset.open;
+    document.body.style.overflow = '';
+  }
+  function stepViewer(d){
+    if (!pvList.length) return;
+    pvIndex = (pvIndex + d + pvList.length) % pvList.length;
+    paintViewer();
+  }
+  document.getElementById('pvClose').addEventListener('click', closeViewer);
+  document.getElementById('pvPrev').addEventListener('click', function(){ stepViewer(-1); });
+  document.getElementById('pvNext').addEventListener('click', function(){ stepViewer(1); });
+  lb.addEventListener('click', function(e){ if (e.target === lb) closeViewer(); });
+
+  var menu = document.getElementById('pvMenu');
+  var menuFile = null;
+  function openMenu(file, x, y){
+    if (!file) return;
+    menuFile = file;
+    menu.classList.add('on');
+    var r = menu.getBoundingClientRect();
+    menu.style.left = Math.max(12, Math.min(x, window.innerWidth - r.width - 12)) + 'px';
+    menu.style.top = Math.max(12, Math.min(y, window.innerHeight - r.height - 12)) + 'px';
+  }
+  function closeMenu(){ menu.classList.remove('on'); menuFile = null; }
+  menu.addEventListener('click', function(e){
+    var b = e.target.closest('button[data-act]');
+    if (!b || !menuFile) return;
+    var file = menuFile;
+    closeMenu();
+    if (b.dataset.act === 'open') openViewer(file);
+    else if (b.dataset.act === 'delete') askDelete(file);
+  });
+  document.addEventListener('click', function(e){
+    if (!menu.classList.contains('on')) return;
+    if (e.target.closest('#pvMenu')) return;
+    closeMenu();
+  });
+  window.addEventListener('scroll', closeMenu, { passive: true });
+  window.addEventListener('resize', closeMenu);
+
+  /* 右键、长按（iPad 没有右键）、键盘菜单键：都是同一份菜单 */
+  var justOpened = 0, pressTimer = null;
+  var stream = document.getElementById('streamBody');
+  stream.addEventListener('click', function(e){
+    var card = e.target.closest('[data-file]');
+    if (!card) return;
+    if (Date.now() - justOpened < 700) return;
+    openViewer(card.dataset.file);
+  });
+  stream.addEventListener('contextmenu', function(e){
+    var card = e.target.closest('[data-file]');
+    if (!card) return;
+    e.preventDefault();
+    var r = card.getBoundingClientRect();
+    openMenu(card.dataset.file,
+      e.clientX || Math.round(r.left + r.width / 2),
+      e.clientY || Math.round(r.top + Math.min(r.height, 200) / 2));
+  });
+  stream.addEventListener('pointerdown', function(e){
+    if (e.pointerType === 'mouse') return;
+    var card = e.target.closest('[data-file]');
+    if (!card) return;
+    var file = card.dataset.file, x = e.clientX, y = e.clientY;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(function(){ justOpened = Date.now(); openMenu(file, x, y); }, 500);
+  }, { passive: true });
+  ['pointerup', 'pointercancel', 'pointermove'].forEach(function(ev){
+    stream.addEventListener(ev, function(){ clearTimeout(pressTimer); }, { passive: true });
+  });
+
+  /* 删掉：要先进家人模式 + 二次确认。文件挪进 photos/_trash，不是抹掉 */
+  var delModal = document.getElementById('pvDel');
+  var delFile = null;
+  function askDelete(file){
+    if (!family){
+      alert('删除要先进家人模式：回相册页，点右上角那个按钮输口令，再回来。');
+      return;
+    }
+    var p = list.filter(function(x){ return baseName(x.src) === file; })[0];
+    if (!p) return;
+    delFile = file;
+    var bare = String(p.note || '').replace(/[。！？!?]$/, '');
+    document.getElementById('pvDelDesc').textContent =
+      p.year + ' 年 · ' + bare + '。删掉之后文件会先挪进 photos/_trash，还能找回来。';
+    delModal.dataset.open = '1';
+    document.getElementById('pvDelOk').focus();
+  }
+  function closeDel(){ delete delModal.dataset.open; delFile = null; }
+  delModal.querySelectorAll('[data-close]').forEach(function(el){
+    el.addEventListener('click', closeDel);
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    if (delModal.dataset.open) { closeDel(); return; }
+    if (menu.classList.contains('on')) { closeMenu(); return; }
+    if (lb.dataset.open) closeViewer();
+  });
+  document.getElementById('pvDelOk').addEventListener('click', function(){
+    var file = delFile;
+    if (!file) return;
+    fetch('/api/photo?file=' + encodeURIComponent(file), { method: 'DELETE' })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        closeDel();
+        if (j && j.ok){
+          removed = Array.isArray(j.files) ? j.files : removed.concat([file]);
+          closeViewer();
+          paintAll();
+        } else {
+          alert('没删掉：' + ((j && j.error) || '服务器没答应'));
+        }
+      })
+      .catch(function(){ closeDel(); alert('没删掉：连不上服务。'); });
+  });
+
+  /* 相册里删过的照片清单，读完再画一遍 */
+  fetch('/api/removed', { cache: 'no-store' })
+    .then(function(r){ return r.json(); })
+    .then(function(j){ if (j && Array.isArray(j.files)){ removed = j.files; paintAll(); } })
+    .catch(function(){});
+
+  /* 抽屉 */
+  var burger = document.getElementById('burger');
+  var drawer = document.getElementById('drawer');
+  var backdrop = document.getElementById('backdrop');
+  function setDrawer(open){
+    burger.classList.toggle('open', open);
+    drawer.classList.toggle('open', open);
+    backdrop.classList.toggle('open', open);
+    document.body.style.overflow = open ? 'hidden' : '';
+    /* 交错出现 */
+    drawer.querySelectorAll('.big a').forEach(function(a,i){
+      a.style.transitionDelay = open ? (300 + i*80) + 'ms' : '0ms';
+    });
+    drawer.querySelectorAll('.small a').forEach(function(a,i){
+      a.style.transitionDelay = open ? (550 + i*60) + 'ms' : '0ms';
+    });
+  }
+  burger.addEventListener('click', function(){ setDrawer(!drawer.classList.contains('open')); });
+  backdrop.addEventListener('click', function(){ setDrawer(false); });
+  if (/[?&]drawer=1/.test(location.search)) setDrawer(true);
+  /* 截图用的小钩子：打开就往下滚一屏，平时用不到 */
+  if (/[?&]scroll=1/.test(location.search)) window.scrollTo(0, window.innerHeight);
+})();
+</script>
+</body>
+</html>
