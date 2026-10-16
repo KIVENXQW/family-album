@@ -233,7 +233,9 @@
   }
 
   // ---------- 路由 ----------
-  function route() {
+  /* keepScroll：删掉一张之后重画时用。换页（点导航）要回到页首，
+     但删照片不该把人弹回顶上——那一下会让人分不清自己删的是哪张。 */
+  function route(keepScroll) {
     const hash = (location.hash || '#/').replace(/^#/, '');
     const parts = hash.split('/').filter(Boolean);
     let nav = 'home';
@@ -246,8 +248,36 @@
     else renderHome();
 
     document.querySelectorAll('nav.main a').forEach(a => a.classList.toggle('on', a.dataset.nav === nav));
-    window.scrollTo(0, 0);
+    if (!keepScroll) window.scrollTo(0, 0);
     resetIdle();
+  }
+
+  /* 锁滚动（弹窗、看大图时不让背景跟着滚）。
+     只锁 <html>，别锁 <body>：锁 body 会让它自己变成滚动容器，
+     而顶栏是 position:sticky，锚点一变，浏览器就会把滚动位置推一下
+     （实测点开一张照片，页面会莫名上跳 72px，正好是顶栏的高度）。 */
+  let lockY = null;
+  function lockScroll(on) {
+    if (on) {
+      lockY = window.scrollY;
+      /* 不用 overflow:hidden —— 试过两种锁法，浏览器都会在这一下把画面
+         往上推 72px（正好是顶栏高度），看着像"跳了一下"。改成把 body 钉住：
+         位置用负的 top 顶回来，画面上什么都不动。 */
+      const b = document.body.style;
+      b.position = 'fixed';
+      b.top = -lockY + 'px';
+      b.left = '0';
+      b.right = '0';
+      b.width = '100%';
+    } else {
+      const b = document.body.style;
+      b.position = '';
+      b.top = '';
+      b.left = '';
+      b.right = '';
+      b.width = '';
+      if (lockY !== null) { window.scrollTo(0, lockY); lockY = null; }
+    }
   }
 
   // ---------- 弹窗底座 ----------
@@ -255,14 +285,16 @@
   function openModal(el, focusEl) {
     lastFocus = document.activeElement;
     el.dataset.open = '1';
-    document.body.style.overflow = 'hidden';
+    lockScroll(true);
     clearTimeout(idleTimer);
-    if (focusEl) setTimeout(() => focusEl.focus(), 80);
+    /* preventScroll：不然浏览器"把焦点滚进视野"会顺手滚动页面，
+       删照片时人会觉得画面被谁推了一下。 */
+    if (focusEl) setTimeout(() => focusEl.focus({ preventScroll: true }), 80);
   }
   function closeModal(el) {
     delete el.dataset.open;
-    document.body.style.overflow = '';
-    if (lastFocus && lastFocus.focus) lastFocus.focus();
+    lockScroll(false);
+    if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
     resetIdle();
   }
   document.querySelectorAll('.modal').forEach(m => {
@@ -328,7 +360,7 @@
     } else {
       gateMsgText.textContent = v ? '口令不对，再试一次。' : '还没输口令。';
       gateMsg.dataset.show = '1';
-      gateCode.focus();
+      gateCode.focus({ preventScroll: true });
       gateCode.select();
     }
   }
@@ -556,7 +588,7 @@
     ctx.style.left = left + 'px';
     ctx.style.top = top + 'px';
     const first = ctx.querySelector('button');
-    if (first) first.focus();
+    if (first) first.focus({ preventScroll: true });
   }
   function closeMenu() {
     ctx.classList.remove('on');
@@ -601,7 +633,7 @@
     lbIndex = Math.max(0, lbList.findIndex(it => it.id === shotKey(ref)));
     paintLightbox();
     lb.dataset.open = '1';
-    document.body.style.overflow = 'hidden';
+    lockScroll(true);
   }
   function paintLightbox() {
     const it = lbList[lbIndex];
@@ -615,7 +647,7 @@
   }
   function closeLightbox() {
     delete lb.dataset.open;
-    document.body.style.overflow = '';
+    lockScroll(false);
   }
   function stepLightbox(d) {
     if (!lbList.length) return;
@@ -673,7 +705,7 @@
         if (isUpload) await refreshUploads();
         else if (Array.isArray(j.files)) state.removed = j.files;
         closeLightbox();
-        route();
+        route(true);
         showToast('删掉了，文件挪到了 ' + (isUpload ? 'uploads/_trash' : 'photos/_trash') + '。');
       } else {
         showToast('没删掉：' + ((j && j.error) || '服务器没答应'));

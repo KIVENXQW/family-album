@@ -14,6 +14,10 @@
 
 * { box-sizing: border-box; }
 
+/* 给滚动条留一个固定槽位：不然弹窗 / 看大图把滚动条藏起来的那一刻，
+   内容宽度会突然多出 15px，照片墙的列数和头图高度跟着变，画面会抖一下。 */
+html { scrollbar-gutter: stable; }
+
 body {
   margin: 0;
   background: var(--paper);
