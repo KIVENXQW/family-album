@@ -10,7 +10,6 @@ window.ALBUM = {
   photos: [
     { id: 'n01', src: 'thumbs/01-chunjie-1990.jpg', full: 'photos/01-chunjie-1990.jpg', year: 1990, people: ['nainai', 'yeye', 'baba'], note: '年夜饭。桌上那盘鱼是爷爷做的。' },
     { id: 'n02', src: 'thumbs/02-quanjiafu-2023.jpg', full: 'photos/02-quanjiafu-2023.jpg', year: 2023, people: ['nainai', 'yeye', 'baba', 'mama', 'xiaoman'], note: '拍完才发现后面还有人站着看。' },
-    { id: 'n03', src: 'thumbs/03-nainai-sunnv.jpg', full: 'photos/03-nainai-sunnv.jpg', year: 2026, people: ['nainai', 'xiaoman'], note: '小满在树底下写作业，奶奶在旁边坐了一下午。' },
     { id: 'n04', src: 'thumbs/04-haibian.jpg', full: 'photos/04-haibian.jpg', year: 2022, people: ['baba', 'mama'], note: '风大得说话都听不见。' },
     { id: 'n05', src: 'thumbs/05-shengri-lazhu.jpg', full: 'photos/05-shengri-lazhu.jpg', year: 2025, people: ['xiaoman'], note: '蜡烛插歪了也不管。' },
     { id: 'n06', src: 'thumbs/06-laozhaopian-1980.jpg', full: 'photos/06-laozhaopian-1980.jpg', year: 1980, people: ['nainai'], note: '奶奶二十三岁。背景是画上去的布景。' },

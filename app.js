@@ -93,7 +93,9 @@
     state.uploads.forEach(u => {
       html += '<button class="tile-btn" type="button" data-shot="' + shotOfUpload(u) +
         '" title="刚导入，还没认领">' +
-        '<img loading="lazy" decoding="async" src="uploads/' + encodeURIComponent(u.file) + '" alt=""></button>';
+        /* 墙上用小图（原图动辄 3-4MB，几十张会把手机拖死），万一没有就退回原图 */
+        '<img loading="lazy" decoding="async" src="thumbs/' + encodeURIComponent(u.file) +
+          '" alt="" onerror="this.onerror=null;this.src=\'uploads/' + encodeURIComponent(u.file) + '\'"></button>';
     });
     list.forEach(p => {
       html += '<button class="tile-btn" type="button" data-shot="' + shotOfPhoto(p) + '">' + img(p) + '</button>';

@@ -654,7 +654,9 @@ function buildPicker(){
   var html = '<div class="cap">板子上铺哪些 · 不选就是渐变</div><div class="grid">';
   ringItems.forEach(function(it){
     html += '<button class="p" type="button" data-key="' + it.key + '" aria-pressed="false" aria-label="' + it.key + '">' +
-      '<img src="' + it.src + '" alt="" loading="lazy" decoding="async">' +
+      /* 万一某张还没生成缩略图，退回原图，别显示裂图 */
+      '<img src="' + it.src + '" alt="" loading="lazy" decoding="async"' +
+        ' onerror="this.onerror=null;this.src=\'' + it.full + '\'">' +
       '<span class="tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></span>' +
       '</button>';
   });
